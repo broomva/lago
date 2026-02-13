@@ -13,8 +13,6 @@ use crate::state::AppState;
 /// Includes CORS middleware (permissive for development) and request tracing.
 pub fn build_router(state: Arc<AppState>) -> Router {
     let v1 = Router::new()
-        // --- Health
-        .route("/health", get(routes::health::health))
         // --- Sessions: POST and GET on the same path must be combined
         .route(
             "/sessions",
@@ -50,6 +48,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         );
 
     Router::new()
+        .route("/health", get(routes::health::health))
         .nest("/v1", v1)
         .layer(
             CorsLayer::new()

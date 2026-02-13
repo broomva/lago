@@ -1,3 +1,4 @@
+mod client;
 mod commands;
 mod db;
 
@@ -13,6 +14,10 @@ struct Cli {
     /// Path to the data directory (default: .lago)
     #[arg(long, global = true, default_value = ".lago")]
     data_dir: PathBuf,
+
+    /// API port for client connections (default: 8080)
+    #[arg(long, global = true, default_value_t = 8080)]
+    api_port: u16,
 
     #[command(subcommand)]
     command: Commands,
@@ -152,6 +157,7 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = &cli.data_dir;
+    let api_port = cli.api_port;
 
     match cli.command {
         Commands::Init { path } => {
@@ -173,13 +179,13 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
         Commands::Session { action } => match action {
             SessionAction::Create { name } => {
-                commands::session::create(data_dir, &name).await?;
+                commands::session::create(data_dir, api_port, &name).await?;
             }
             SessionAction::List => {
-                commands::session::list(data_dir).await?;
+                commands::session::list(data_dir, api_port).await?;
             }
             SessionAction::Show { id } => {
-                commands::session::show(data_dir, &id).await?;
+                commands::session::show(data_dir, api_port, &id).await?;
             }
         },
 

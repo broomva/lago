@@ -14,7 +14,7 @@ use crate::state::AppState;
 
 // --- Request / Response types
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct CreateSessionRequest {
     pub name: String,
     #[serde(default)]
@@ -23,13 +23,13 @@ pub struct CreateSessionRequest {
     pub params: Option<HashMap<String, String>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CreateSessionResponse {
     pub session_id: String,
     pub branch_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SessionResponse {
     pub session_id: String,
     pub name: String,
