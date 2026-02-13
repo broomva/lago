@@ -52,21 +52,17 @@ impl IntoResponse for ApiError {
                     "file_not_found",
                     format!("file not found: {path}"),
                 ),
-                LagoError::InvalidArgument(msg) => (
-                    StatusCode::BAD_REQUEST,
-                    "invalid_argument",
-                    msg.clone(),
-                ),
+                LagoError::InvalidArgument(msg) => {
+                    (StatusCode::BAD_REQUEST, "invalid_argument", msg.clone())
+                }
                 LagoError::SequenceConflict { expected, actual } => (
                     StatusCode::CONFLICT,
                     "sequence_conflict",
                     format!("sequence conflict: expected {expected}, got {actual}"),
                 ),
-                LagoError::PolicyDenied(msg) => (
-                    StatusCode::FORBIDDEN,
-                    "policy_denied",
-                    msg.clone(),
-                ),
+                LagoError::PolicyDenied(msg) => {
+                    (StatusCode::FORBIDDEN, "policy_denied", msg.clone())
+                }
                 LagoError::Serialization(e) => (
                     StatusCode::BAD_REQUEST,
                     "serialization_error",
@@ -78,16 +74,8 @@ impl IntoResponse for ApiError {
                     format!("internal error: {e}"),
                 ),
             },
-            ApiError::BadRequest(msg) => (
-                StatusCode::BAD_REQUEST,
-                "bad_request",
-                msg.clone(),
-            ),
-            ApiError::NotFound(msg) => (
-                StatusCode::NOT_FOUND,
-                "not_found",
-                msg.clone(),
-            ),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.clone()),
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.clone()),
             ApiError::Internal(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
@@ -144,7 +132,11 @@ mod tests {
 
     #[test]
     fn api_error_from_lago_sequence_conflict() {
-        let e: ApiError = LagoError::SequenceConflict { expected: 5, actual: 3 }.into();
+        let e: ApiError = LagoError::SequenceConflict {
+            expected: 5,
+            actual: 3,
+        }
+        .into();
         let resp = e.into_response();
         assert_eq!(resp.status(), StatusCode::CONFLICT);
     }

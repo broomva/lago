@@ -1,9 +1,7 @@
 use std::path::Path;
 
 use lago_core::event::EventPayload;
-use lago_core::{
-    BranchId, EventEnvelope, EventId, EventQuery, Journal, Projection, SessionId,
-};
+use lago_core::{BranchId, EventEnvelope, EventId, EventQuery, Journal, Projection, SessionId};
 use lago_fs::ManifestProjection;
 use tracing::debug;
 
@@ -60,10 +58,7 @@ pub async fn create(
 ///
 /// Builds a `ManifestProjection` by replaying all events for the session,
 /// then reads branch metadata from the projection's `BranchManager`.
-pub async fn list(
-    data_dir: &Path,
-    session_id_str: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn list(data_dir: &Path, session_id_str: &str) -> Result<(), Box<dyn std::error::Error>> {
     let journal = open_journal(data_dir)?;
     let session_id = SessionId::from_string(session_id_str);
 
@@ -89,7 +84,10 @@ pub async fn list(
         return Ok(());
     }
 
-    println!("{:<28}  {:<16}  {:<10}  HEAD SEQ", "BRANCH ID", "NAME", "FORK SEQ");
+    println!(
+        "{:<28}  {:<16}  {:<10}  HEAD SEQ",
+        "BRANCH ID", "NAME", "FORK SEQ"
+    );
     println!("{}", "-".repeat(80));
 
     for branch in &branches {

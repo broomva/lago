@@ -1,5 +1,5 @@
-use lago_core::event::EventPayload;
 use lago_core::EventEnvelope;
+use lago_core::event::EventPayload;
 use serde_json::json;
 
 use super::format::{SseFormat, SseFrame};
@@ -42,11 +42,7 @@ impl SseFormat for OpenAiFormat {
                 }]
             }
 
-            EventPayload::MessageDelta {
-                role,
-                delta,
-                index,
-            } => {
+            EventPayload::MessageDelta { role, delta, index } => {
                 let chunk = json!({
                     "id": format!("chatcmpl-{}", event.event_id),
                     "object": "chat.completion.chunk",
@@ -159,7 +155,9 @@ mod tests {
     fn non_message_events_filtered_out() {
         let fmt = OpenAiFormat;
         let event = make_envelope(
-            EventPayload::FileDelete { path: "/tmp/x".into() },
+            EventPayload::FileDelete {
+                path: "/tmp/x".into(),
+            },
             1,
         );
         let frames = fmt.format(&event);

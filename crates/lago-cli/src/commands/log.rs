@@ -73,15 +73,22 @@ fn print_event(event: &EventEnvelope) {
                 println!("  from:   {snap}");
             }
         }
-        EventPayload::Message { role, content, model, token_usage } => {
+        EventPayload::Message {
+            role,
+            content,
+            model,
+            token_usage,
+        } => {
             println!("  type:   Message");
             println!("  role:   {role}");
             if let Some(m) = model {
                 println!("  model:  {m}");
             }
             if let Some(usage) = token_usage {
-                println!("  tokens: {} prompt + {} completion = {} total",
-                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
+                println!(
+                    "  tokens: {} prompt + {} completion = {} total",
+                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+                );
             }
             // Truncate long messages for display
             let preview = if content.len() > 200 {
@@ -101,7 +108,12 @@ fn print_event(event: &EventEnvelope) {
             };
             println!("  delta:  {preview}");
         }
-        EventPayload::FileWrite { path, blob_hash, size_bytes, .. } => {
+        EventPayload::FileWrite {
+            path,
+            blob_hash,
+            size_bytes,
+            ..
+        } => {
             println!("  type:   FileWrite");
             println!("  path:   {path}");
             println!("  hash:   {blob_hash}");
@@ -116,7 +128,12 @@ fn print_event(event: &EventEnvelope) {
             println!("  from:   {old_path}");
             println!("  to:     {new_path}");
         }
-        EventPayload::ToolInvoke { call_id, tool_name, arguments, category } => {
+        EventPayload::ToolInvoke {
+            call_id,
+            tool_name,
+            arguments,
+            category,
+        } => {
             println!("  type:   ToolInvoke");
             println!("  tool:   {tool_name}");
             println!("  call:   {call_id}");
@@ -131,20 +148,35 @@ fn print_event(event: &EventEnvelope) {
             };
             println!("  args:   {preview}");
         }
-        EventPayload::ToolResult { call_id, tool_name, duration_ms, status, .. } => {
+        EventPayload::ToolResult {
+            call_id,
+            tool_name,
+            duration_ms,
+            status,
+            ..
+        } => {
             println!("  type:   ToolResult");
             println!("  tool:   {tool_name}");
             println!("  call:   {call_id}");
             println!("  status: {status:?}");
             println!("  dur:    {duration_ms}ms");
         }
-        EventPayload::ApprovalRequested { approval_id, tool_name, risk, .. } => {
+        EventPayload::ApprovalRequested {
+            approval_id,
+            tool_name,
+            risk,
+            ..
+        } => {
             println!("  type:   ApprovalRequested");
             println!("  tool:   {tool_name}");
             println!("  id:     {approval_id}");
             println!("  risk:   {risk:?}");
         }
-        EventPayload::ApprovalResolved { approval_id, decision, reason } => {
+        EventPayload::ApprovalResolved {
+            approval_id,
+            decision,
+            reason,
+        } => {
             println!("  type:   ApprovalResolved");
             println!("  id:     {approval_id}");
             println!("  decision: {decision:?}");
@@ -152,24 +184,41 @@ fn print_event(event: &EventEnvelope) {
                 println!("  reason: {r}");
             }
         }
-        EventPayload::Snapshot { snapshot_id, snapshot_type, covers_through_seq, .. } => {
+        EventPayload::Snapshot {
+            snapshot_id,
+            snapshot_type,
+            covers_through_seq,
+            ..
+        } => {
             println!("  type:   Snapshot");
             println!("  id:     {snapshot_id}");
             println!("  kind:   {snapshot_type:?}");
             println!("  covers: seq {covers_through_seq}");
         }
-        EventPayload::BranchCreated { new_branch_id, fork_point_seq, name } => {
+        EventPayload::BranchCreated {
+            new_branch_id,
+            fork_point_seq,
+            name,
+        } => {
             println!("  type:   BranchCreated");
             println!("  branch: {new_branch_id}");
             println!("  name:   {name}");
             println!("  fork:   seq {fork_point_seq}");
         }
-        EventPayload::BranchMerged { source_branch_id, merge_seq } => {
+        EventPayload::BranchMerged {
+            source_branch_id,
+            merge_seq,
+        } => {
             println!("  type:   BranchMerged");
             println!("  source: {source_branch_id}");
             println!("  merge:  seq {merge_seq}");
         }
-        EventPayload::PolicyEvaluated { tool_name, decision, rule_id, explanation } => {
+        EventPayload::PolicyEvaluated {
+            tool_name,
+            decision,
+            rule_id,
+            explanation,
+        } => {
             println!("  type:   PolicyEvaluated");
             println!("  tool:   {tool_name}");
             println!("  decision: {decision:?}");

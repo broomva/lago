@@ -6,7 +6,11 @@ use lagod::config::DaemonConfig;
 // --- CLI definition
 
 #[derive(Parser)]
-#[command(name = "lagod", about = "Lago daemon — event-sourced agent runtime", version)]
+#[command(
+    name = "lagod",
+    about = "Lago daemon — event-sourced agent runtime",
+    version
+)]
 struct Args {
     /// Path to the configuration file (default: lago.toml)
     #[arg(long, default_value = "lago.toml")]
@@ -53,4 +57,3 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // --- Run the daemon
     lagod::run(config).await
 }
-

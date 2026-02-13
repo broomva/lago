@@ -125,7 +125,9 @@ mod tests {
 
     #[test]
     fn event_query_partial_builder() {
-        let q = EventQuery::new().session(SessionId::from_string("S1")).limit(5);
+        let q = EventQuery::new()
+            .session(SessionId::from_string("S1"))
+            .limit(5);
         assert!(q.session_id.is_some());
         assert!(q.branch_id.is_none());
         assert!(q.after_seq.is_none());

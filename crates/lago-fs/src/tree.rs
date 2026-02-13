@@ -8,14 +8,9 @@ use crate::manifest::Manifest;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TreeEntry {
     /// A file entry with its name and manifest data.
-    File {
-        name: String,
-        entry: ManifestEntry,
-    },
+    File { name: String, entry: ManifestEntry },
     /// A subdirectory identified by name.
-    Directory {
-        name: String,
-    },
+    Directory { name: String },
 }
 
 /// List the immediate children (files and subdirectories) of the given directory path.

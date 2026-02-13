@@ -1,6 +1,6 @@
+use lagod::config::DaemonConfig;
 use std::path::PathBuf;
 use tracing::info;
-use lagod::config::DaemonConfig;
 
 /// Options for the `lago serve` command.
 #[derive(Debug, Clone)]
@@ -23,9 +23,13 @@ pub async fn run(opts: ServeOptions) -> Result<(), Box<dyn std::error::Error>> {
 
     // Try to load config from default location, or use defaults
     let mut config = DaemonConfig::load(std::path::Path::new("lago.toml"))?;
-    
+
     // Override with CLI options
-    config.merge_cli(Some(opts.grpc_port), Some(opts.http_port), Some(opts.data_dir));
+    config.merge_cli(
+        Some(opts.grpc_port),
+        Some(opts.http_port),
+        Some(opts.data_dir),
+    );
 
     lagod::run(config).await
 }

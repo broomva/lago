@@ -5,16 +5,14 @@ pub const COMPRESSION_LEVEL: i32 = 3;
 
 /// Compress data using zstd at the default compression level.
 pub fn compress(data: &[u8]) -> LagoResult<Vec<u8>> {
-    zstd::encode_all(data, COMPRESSION_LEVEL).map_err(|e| {
-        lago_core::LagoError::Store(format!("zstd compress failed: {e}"))
-    })
+    zstd::encode_all(data, COMPRESSION_LEVEL)
+        .map_err(|e| lago_core::LagoError::Store(format!("zstd compress failed: {e}")))
 }
 
 /// Decompress zstd-compressed data.
 pub fn decompress(data: &[u8]) -> LagoResult<Vec<u8>> {
-    zstd::decode_all(data).map_err(|e| {
-        lago_core::LagoError::Store(format!("zstd decompress failed: {e}"))
-    })
+    zstd::decode_all(data)
+        .map_err(|e| lago_core::LagoError::Store(format!("zstd decompress failed: {e}")))
 }
 
 #[cfg(test)]

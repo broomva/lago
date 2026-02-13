@@ -1,9 +1,9 @@
 pub mod config;
 pub mod shutdown;
 
+use config::DaemonConfig;
 use std::sync::Arc;
 use tracing::info;
-use config::DaemonConfig;
 
 /// Run the Lago daemon with the given configuration.
 pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>> {

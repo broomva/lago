@@ -6,16 +6,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info, warn};
 
-use lago_core::{
-    Journal, Session, SessionConfig, SessionId,
-    event::EventEnvelope as CoreEvent,
-};
+use lago_core::{Journal, Session, SessionConfig, SessionId, event::EventEnvelope as CoreEvent};
 
 use crate::codec;
-use crate::proto::{
-    self,
-    ingest_service_server::IngestService,
-};
+use crate::proto::{self, ingest_service_server::IngestService};
 
 /// Maximum number of pending WAL entries before backpressure.
 const _MAX_PENDING: u64 = 10_000;
@@ -54,38 +48,34 @@ impl<J: Journal + 'static> IngestService for IngestServer<J> {
                             proto::ingest_request::Message::Event(proto_event) => {
                                 let event_id = proto_event.event_id.clone();
                                 match codec::event_from_proto(proto_event) {
-                                    Ok(event) => {
-                                        match journal.append(event).await {
-                                            Ok(seq) => {
-                                                let ack = codec::make_ack(
-                                                    &event_id, seq, true, None,
-                                                );
-                                                let resp = proto::IngestResponse {
-                                                    message: Some(
-                                                        proto::ingest_response::Message::Ack(ack),
-                                                    ),
-                                                };
-                                                if tx.send(Ok(resp)).await.is_err() {
-                                                    break;
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!("journal append error: {e}");
-                                                let ack = codec::make_ack(
-                                                    &event_id,
-                                                    0,
-                                                    false,
-                                                    Some(e.to_string()),
-                                                );
-                                                let resp = proto::IngestResponse {
-                                                    message: Some(
-                                                        proto::ingest_response::Message::Ack(ack),
-                                                    ),
-                                                };
-                                                let _ = tx.send(Ok(resp)).await;
+                                    Ok(event) => match journal.append(event).await {
+                                        Ok(seq) => {
+                                            let ack = codec::make_ack(&event_id, seq, true, None);
+                                            let resp = proto::IngestResponse {
+                                                message: Some(
+                                                    proto::ingest_response::Message::Ack(ack),
+                                                ),
+                                            };
+                                            if tx.send(Ok(resp)).await.is_err() {
+                                                break;
                                             }
                                         }
-                                    }
+                                        Err(e) => {
+                                            error!("journal append error: {e}");
+                                            let ack = codec::make_ack(
+                                                &event_id,
+                                                0,
+                                                false,
+                                                Some(e.to_string()),
+                                            );
+                                            let resp = proto::IngestResponse {
+                                                message: Some(
+                                                    proto::ingest_response::Message::Ack(ack),
+                                                ),
+                                            };
+                                            let _ = tx.send(Ok(resp)).await;
+                                        }
+                                    },
                                     Err(e) => {
                                         warn!("proto decode error: {e}");
                                         let ack = codec::make_ack(
@@ -95,9 +85,9 @@ impl<J: Journal + 'static> IngestService for IngestServer<J> {
                                             Some(format!("decode error: {e}")),
                                         );
                                         let resp = proto::IngestResponse {
-                                            message: Some(
-                                                proto::ingest_response::Message::Ack(ack),
-                                            ),
+                                            message: Some(proto::ingest_response::Message::Ack(
+                                                ack,
+                                            )),
                                         };
                                         let _ = tx.send(Ok(resp)).await;
                                     }
@@ -106,9 +96,7 @@ impl<J: Journal + 'static> IngestService for IngestServer<J> {
                             proto::ingest_request::Message::Heartbeat(_) => {
                                 let hb = codec::make_heartbeat();
                                 let resp = proto::IngestResponse {
-                                    message: Some(
-                                        proto::ingest_response::Message::Heartbeat(hb),
-                                    ),
+                                    message: Some(proto::ingest_response::Message::Heartbeat(hb)),
                                 };
                                 let _ = tx.send(Ok(resp)).await;
                             }
@@ -181,4 +169,3 @@ impl<J: Journal + 'static> IngestService for IngestServer<J> {
         }))
     }
 }
-

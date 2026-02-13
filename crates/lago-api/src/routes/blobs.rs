@@ -51,9 +51,10 @@ pub async fn put_blob(
     Path(expected_hash): Path<String>,
     body: Bytes,
 ) -> Result<(StatusCode, axum::Json<BlobPutResponse>), ApiError> {
-    let blob_hash = state.blob_store.put(&body).map_err(|e| {
-        ApiError::Internal(format!("failed to store blob: {e}"))
-    })?;
+    let blob_hash = state
+        .blob_store
+        .put(&body)
+        .map_err(|e| ApiError::Internal(format!("failed to store blob: {e}")))?;
 
     // Verify the uploaded content matches the expected hash
     if blob_hash.as_str() != expected_hash {

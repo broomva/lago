@@ -44,22 +44,16 @@ impl MatchCondition {
 
             MatchCondition::ToolPattern(pattern) => match_glob(pattern, &ctx.tool_name),
 
-            MatchCondition::Category(cat) => {
-                ctx.category.as_deref() == Some(cat.as_str())
-            }
+            MatchCondition::Category(cat) => ctx.category.as_deref() == Some(cat.as_str()),
 
             MatchCondition::RiskAtLeast(threshold) => match &ctx.risk {
                 Some(risk) => risk_ord(risk) >= risk_ord(threshold),
                 None => false,
             },
 
-            MatchCondition::And(conditions) => {
-                conditions.iter().all(|c| c.matches(ctx))
-            }
+            MatchCondition::And(conditions) => conditions.iter().all(|c| c.matches(ctx)),
 
-            MatchCondition::Or(conditions) => {
-                conditions.iter().any(|c| c.matches(ctx))
-            }
+            MatchCondition::Or(conditions) => conditions.iter().any(|c| c.matches(ctx)),
 
             MatchCondition::Not(inner) => !inner.matches(ctx),
 
@@ -205,14 +199,12 @@ mod tests {
 
     #[test]
     fn not_condition() {
-        let cond = MatchCondition::Not(Box::new(MatchCondition::ToolName(
-            "exec_shell".to_string(),
-        )));
+        let cond =
+            MatchCondition::Not(Box::new(MatchCondition::ToolName("exec_shell".to_string())));
         assert!(cond.matches(&test_ctx()));
 
-        let cond = MatchCondition::Not(Box::new(MatchCondition::ToolName(
-            "file_write".to_string(),
-        )));
+        let cond =
+            MatchCondition::Not(Box::new(MatchCondition::ToolName("file_write".to_string())));
         assert!(!cond.matches(&test_ctx()));
     }
 

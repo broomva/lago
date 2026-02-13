@@ -53,16 +53,16 @@ pub async fn list(data_dir: &Path, api_port: u16) -> Result<(), Box<dyn std::err
     if match client.list_sessions().await {
         Ok(list) => {
             debug!("using API client to list sessions");
-            // Map SessionResponse back to a simplified structure for display if needed, 
-            // or just use the response data directly. 
+            // Map SessionResponse back to a simplified structure for display if needed,
+            // or just use the response data directly.
             // The existing code expects `lago_core::session::Session` for display.
             // For now, let's construct lightweight Session objects or just change display logic.
             // To keep it simple, we'll refactor display logic to take a common trait or struct,
             // or just manual mapping.
-            
-            // Let's use a simpler approach: 
+
+            // Let's use a simpler approach:
             // If API works, print and return. If not, load from DB and print.
-            
+
             if list.is_empty() {
                 println!("No sessions found.");
                 return Ok(());
@@ -121,9 +121,15 @@ pub async fn show(
 
     // Try API
     if let Ok(session) = client.get_session(id).await {
-         debug!("using API client to show session");
-         print_session_details(&session.session_id, &session.name, session.created_at, &session.model, &session.branches);
-         return Ok(());
+        debug!("using API client to show session");
+        print_session_details(
+            &session.session_id,
+            &session.name,
+            session.created_at,
+            &session.model,
+            &session.branches,
+        );
+        return Ok(());
     }
 
     // Fallback
@@ -137,7 +143,13 @@ pub async fn show(
         .ok_or_else(|| format!("session not found: {id}"))?;
 
     let branch_names: Vec<String> = session.branches.iter().map(|b| b.to_string()).collect();
-    print_session_details(&session.session_id.to_string(), &session.config.name, session.created_at, &session.config.model, &branch_names);
+    print_session_details(
+        &session.session_id.to_string(),
+        &session.config.name,
+        session.created_at,
+        &session.config.model,
+        &branch_names,
+    );
 
     Ok(())
 }
@@ -146,7 +158,10 @@ fn print_session_details(id: &str, name: &str, created_at: u64, model: &str, bra
     println!("Session ID:  {}", id);
     println!("Name:        {}", name);
     println!("Created At:  {}", format_timestamp(created_at));
-    println!("Model:       {}", if model.is_empty() { "(default)" } else { model });
+    println!(
+        "Model:       {}",
+        if model.is_empty() { "(default)" } else { model }
+    );
 
     if !branches.is_empty() {
         println!("Branches:");
@@ -161,9 +176,7 @@ fn format_timestamp(micros: u64) -> String {
     let secs = micros / 1_000_000;
     let nanos = ((micros % 1_000_000) * 1000) as u32;
     let dt = std::time::UNIX_EPOCH + std::time::Duration::new(secs, nanos);
-    let elapsed = dt
-        .elapsed()
-        .unwrap_or(std::time::Duration::ZERO);
+    let elapsed = dt.elapsed().unwrap_or(std::time::Duration::ZERO);
 
     if elapsed.as_secs() < 60 {
         "just now".to_string()

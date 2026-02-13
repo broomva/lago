@@ -1,7 +1,4 @@
-use lago_core::{
-    BranchId, EventEnvelope, EventId, RunId, SessionId,
-    event::EventPayload,
-};
+use lago_core::{BranchId, EventEnvelope, EventId, RunId, SessionId, event::EventPayload};
 
 // --- Proto generated types
 use crate::proto;
@@ -22,9 +19,7 @@ pub fn event_to_proto(event: &EventEnvelope) -> proto::EventEnvelope {
 }
 
 /// Convert a proto EventEnvelope to a core EventEnvelope.
-pub fn event_from_proto(
-    proto: proto::EventEnvelope,
-) -> Result<EventEnvelope, serde_json::Error> {
+pub fn event_from_proto(proto: proto::EventEnvelope) -> Result<EventEnvelope, serde_json::Error> {
     let payload: EventPayload = serde_json::from_str(&proto.payload_json)?;
 
     Ok(EventEnvelope {
@@ -60,8 +55,8 @@ pub fn make_heartbeat() -> proto::Heartbeat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lago_core::event::{EventPayload, RiskLevel, SpanStatus, TokenUsage};
     use lago_core::id::*;
-    use lago_core::event::{EventPayload, SpanStatus, TokenUsage, RiskLevel};
     use std::collections::HashMap;
 
     fn make_envelope(payload: EventPayload, seq: u64) -> EventEnvelope {
@@ -111,7 +106,13 @@ mod tests {
         assert_eq!(back.seq, 42);
         assert_eq!(back.run_id.as_ref().unwrap().as_str(), "RUN001");
         assert_eq!(back.parent_id.as_ref().unwrap().as_str(), "EVT000");
-        if let EventPayload::Message { role, content, model, .. } = &back.payload {
+        if let EventPayload::Message {
+            role,
+            content,
+            model,
+            ..
+        } = &back.payload
+        {
             assert_eq!(role, "assistant");
             assert_eq!(content, "Hello!");
             assert_eq!(model.as_deref(), Some("gpt-4"));
@@ -133,7 +134,13 @@ mod tests {
         );
         let proto = event_to_proto(&original);
         let back = event_from_proto(proto).unwrap();
-        if let EventPayload::FileWrite { path, blob_hash, size_bytes, .. } = &back.payload {
+        if let EventPayload::FileWrite {
+            path,
+            blob_hash,
+            size_bytes,
+            ..
+        } = &back.payload
+        {
             assert_eq!(path, "/src/lib.rs");
             assert_eq!(blob_hash.as_str(), "deadbeef");
             assert_eq!(*size_bytes, 2048);
@@ -176,7 +183,12 @@ mod tests {
         );
         let proto = event_to_proto(&original);
         let back = event_from_proto(proto).unwrap();
-        if let EventPayload::ToolResult { status, duration_ms, .. } = &back.payload {
+        if let EventPayload::ToolResult {
+            status,
+            duration_ms,
+            ..
+        } = &back.payload
+        {
             assert_eq!(*status, SpanStatus::Ok);
             assert_eq!(*duration_ms, 150);
         } else {

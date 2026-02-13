@@ -269,7 +269,13 @@ mod tests {
         };
         let json = serde_json::to_string(&payload).unwrap();
         let back: EventPayload = serde_json::from_str(&json).unwrap();
-        if let EventPayload::FileWrite { path, blob_hash, size_bytes, .. } = back {
+        if let EventPayload::FileWrite {
+            path,
+            blob_hash,
+            size_bytes,
+            ..
+        } = back
+        {
             assert_eq!(path, "/src/main.rs");
             assert_eq!(blob_hash.as_str(), "abcdef");
             assert_eq!(size_bytes, 1024);
@@ -398,10 +404,7 @@ mod tests {
 
     #[test]
     fn span_status_serde() {
-        assert_eq!(
-            serde_json::to_string(&SpanStatus::Ok).unwrap(),
-            "\"ok\""
-        );
+        assert_eq!(serde_json::to_string(&SpanStatus::Ok).unwrap(), "\"ok\"");
         assert_eq!(
             serde_json::to_string(&SpanStatus::Error).unwrap(),
             "\"error\""
@@ -419,13 +422,22 @@ mod tests {
     #[test]
     fn risk_level_serde() {
         assert_eq!(serde_json::to_string(&RiskLevel::Low).unwrap(), "\"low\"");
-        assert_eq!(serde_json::to_string(&RiskLevel::Critical).unwrap(), "\"critical\"");
+        assert_eq!(
+            serde_json::to_string(&RiskLevel::Critical).unwrap(),
+            "\"critical\""
+        );
     }
 
     #[test]
     fn snapshot_type_serde() {
-        assert_eq!(serde_json::to_string(&SnapshotType::Full).unwrap(), "\"full\"");
-        assert_eq!(serde_json::to_string(&SnapshotType::Incremental).unwrap(), "\"incremental\"");
+        assert_eq!(
+            serde_json::to_string(&SnapshotType::Full).unwrap(),
+            "\"full\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SnapshotType::Incremental).unwrap(),
+            "\"incremental\""
+        );
     }
 
     #[test]

@@ -109,7 +109,10 @@ mod tests {
         let info = bm.get_branch(&child).unwrap();
         assert_eq!(info.name, "feature");
         assert_eq!(info.fork_point_seq, 10);
-        assert_eq!(info.parent_branch.as_ref().unwrap().as_str(), parent.as_str());
+        assert_eq!(
+            info.parent_branch.as_ref().unwrap().as_str(),
+            parent.as_str()
+        );
     }
 
     #[test]

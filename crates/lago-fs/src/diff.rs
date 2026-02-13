@@ -7,15 +7,9 @@ use crate::manifest::Manifest;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DiffEntry {
     /// A path that exists in the new manifest but not the old.
-    Added {
-        path: String,
-        entry: ManifestEntry,
-    },
+    Added { path: String, entry: ManifestEntry },
     /// A path that exists in the old manifest but not the new.
-    Removed {
-        path: String,
-        entry: ManifestEntry,
-    },
+    Removed { path: String, entry: ManifestEntry },
     /// A path that exists in both manifests but with a different blob_hash.
     Modified {
         path: String,
@@ -156,7 +150,13 @@ mod tests {
     #[test]
     fn diff_mixed_changes() {
         let mut old = Manifest::new();
-        old.apply_write("/keep.txt".to_string(), BlobHash::from_hex("aaa"), 1, None, 1);
+        old.apply_write(
+            "/keep.txt".to_string(),
+            BlobHash::from_hex("aaa"),
+            1,
+            None,
+            1,
+        );
         old.apply_write(
             "/modify.txt".to_string(),
             BlobHash::from_hex("bbb"),
@@ -173,7 +173,13 @@ mod tests {
         );
 
         let mut new = Manifest::new();
-        new.apply_write("/keep.txt".to_string(), BlobHash::from_hex("aaa"), 1, None, 2);
+        new.apply_write(
+            "/keep.txt".to_string(),
+            BlobHash::from_hex("aaa"),
+            1,
+            None,
+            2,
+        );
         new.apply_write(
             "/modify.txt".to_string(),
             BlobHash::from_hex("ddd"),
@@ -181,13 +187,22 @@ mod tests {
             None,
             2,
         );
-        new.apply_write("/add.txt".to_string(), BlobHash::from_hex("eee"), 5, None, 2);
+        new.apply_write(
+            "/add.txt".to_string(),
+            BlobHash::from_hex("eee"),
+            5,
+            None,
+            2,
+        );
 
         let d = diff(&old, &new);
         // /add.txt added, /modify.txt modified, /remove.txt removed
         assert_eq!(d.len(), 3);
 
-        let added = d.iter().filter(|e| matches!(e, DiffEntry::Added { .. })).count();
+        let added = d
+            .iter()
+            .filter(|e| matches!(e, DiffEntry::Added { .. }))
+            .count();
         let removed = d
             .iter()
             .filter(|e| matches!(e, DiffEntry::Removed { .. }))

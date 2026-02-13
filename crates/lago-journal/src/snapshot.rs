@@ -4,9 +4,7 @@
 //! as a serialized JSON array. This allows fast session restoration without
 //! replaying the full event history.
 
-use lago_core::{
-    BranchId, EventEnvelope, EventQuery, Journal, LagoResult, SeqNo, SessionId,
-};
+use lago_core::{BranchId, EventEnvelope, EventQuery, Journal, LagoResult, SeqNo, SessionId};
 
 /// Number of events after which a snapshot is recommended.
 pub const SNAPSHOT_THRESHOLD: u64 = 1000;

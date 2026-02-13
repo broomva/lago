@@ -1,8 +1,14 @@
 [package]
 name = "lago-api"
+description = "HTTP REST API and SSE streaming for the Lago agent runtime"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 lago-core.workspace = true

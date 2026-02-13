@@ -89,7 +89,9 @@ mod tests {
     fn lago_format_includes_file_events() {
         let fmt = LagoFormat;
         let event = make_envelope(
-            EventPayload::FileDelete { path: "/tmp/x".into() },
+            EventPayload::FileDelete {
+                path: "/tmp/x".into(),
+            },
             5,
         );
         let frames = fmt.format(&event);

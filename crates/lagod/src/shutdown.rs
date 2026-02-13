@@ -1,4 +1,3 @@
-
 /// Returns a future that resolves when the process receives a shutdown signal
 /// (SIGINT on all platforms, plus SIGTERM on Unix).
 ///
@@ -8,9 +7,8 @@ pub async fn shutdown_signal() {
 
     #[cfg(unix)]
     {
-        let mut sigterm =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("failed to register SIGTERM handler");
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to register SIGTERM handler");
         tokio::select! {
             _ = ctrl_c => {
                 tracing::info!("received SIGINT (Ctrl+C)");

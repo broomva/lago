@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Serialize;
 
 use lago_core::event::{EventEnvelope, EventPayload};
@@ -57,9 +57,10 @@ pub async fn read_file(
         .find(|e| e.path == file_path)
         .ok_or_else(|| ApiError::NotFound(format!("file not found: {file_path}")))?;
 
-    let data = state.blob_store.get(&entry.blob_hash).map_err(|e| {
-        ApiError::Internal(format!("failed to read blob: {e}"))
-    })?;
+    let data = state
+        .blob_store
+        .get(&entry.blob_hash)
+        .map_err(|e| ApiError::Internal(format!("failed to read blob: {e}")))?;
 
     let content_type = entry
         .content_type
@@ -94,9 +95,10 @@ pub async fn write_file(
         .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
     // Store the blob
-    let blob_hash = state.blob_store.put(&body).map_err(|e| {
-        ApiError::Internal(format!("failed to store blob: {e}"))
-    })?;
+    let blob_hash = state
+        .blob_store
+        .put(&body)
+        .map_err(|e| ApiError::Internal(format!("failed to store blob: {e}")))?;
 
     let size_bytes = body.len() as u64;
     let branch_id = BranchId::from_string("main");
@@ -226,21 +228,14 @@ async fn build_manifest(
             EventPayload::FileDelete { path } => {
                 manifest.apply_delete(path);
             }
-            EventPayload::FileRename {
-                old_path,
-                new_path,
-            } => {
+            EventPayload::FileRename { old_path, new_path } => {
                 manifest.apply_rename(old_path, new_path.clone());
             }
             _ => {}
         }
     }
 
-    let entries: Vec<ManifestEntry> = manifest
-        .entries()
-        .values()
-        .cloned()
-        .collect();
+    let entries: Vec<ManifestEntry> = manifest.entries().values().cloned().collect();
 
     Ok(entries)
 }

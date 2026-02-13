@@ -51,7 +51,8 @@ pub struct HookConfig {
 impl PolicyConfig {
     /// Parse a TOML string into a PolicyConfig.
     pub fn from_toml(content: &str) -> LagoResult<Self> {
-        toml::from_str(content).map_err(|e| LagoError::InvalidArgument(format!("invalid policy TOML: {e}")))
+        toml::from_str(content)
+            .map_err(|e| LagoError::InvalidArgument(format!("invalid policy TOML: {e}")))
     }
 
     /// Load a PolicyConfig from a file path.

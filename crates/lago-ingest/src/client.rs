@@ -1,4 +1,3 @@
-
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -8,10 +7,7 @@ use tracing::error;
 use lago_core::EventEnvelope;
 
 use crate::codec;
-use crate::proto::{
-    self,
-    ingest_service_client::IngestServiceClient,
-};
+use crate::proto::{self, ingest_service_client::IngestServiceClient};
 
 /// Client SDK for streaming events into Lago.
 pub struct IngestClient {
@@ -45,9 +41,7 @@ impl IngestClient {
 
     /// Open a bidirectional ingest stream.
     /// Returns a sender for events and a receiver for acks.
-    pub async fn open_stream(
-        &mut self,
-    ) -> Result<(IngestSender, IngestReceiver), tonic::Status> {
+    pub async fn open_stream(&mut self) -> Result<(IngestSender, IngestReceiver), tonic::Status> {
         let (tx, rx) = mpsc::channel::<proto::IngestRequest>(256);
         let stream = ReceiverStream::new(rx);
         let response = self.client.ingest(stream).await?;
@@ -82,7 +76,10 @@ pub struct IngestSender {
 
 impl IngestSender {
     /// Send an event to the ingest stream.
-    pub async fn send_event(&self, event: &EventEnvelope) -> Result<(), mpsc::error::SendError<proto::IngestRequest>> {
+    pub async fn send_event(
+        &self,
+        event: &EventEnvelope,
+    ) -> Result<(), mpsc::error::SendError<proto::IngestRequest>> {
         let proto_event = codec::event_to_proto(event);
         let req = proto::IngestRequest {
             message: Some(proto::ingest_request::Message::Event(proto_event)),

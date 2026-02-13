@@ -8,13 +8,13 @@ use tokio::sync::broadcast;
 use tracing::debug;
 
 use lago_core::{
-    EventEnvelope, EventQuery, EventStream, Journal, LagoError, LagoResult, SeqNo,
-    Session, SessionId, BranchId, EventId,
+    BranchId, EventEnvelope, EventId, EventQuery, EventStream, Journal, LagoError, LagoResult,
+    SeqNo, Session, SessionId,
 };
 
 use crate::keys::{encode_branch_key, encode_event_key};
 use crate::stream::EventTailStream;
-use crate::tables::{BRANCH_HEADS, EVENTS, EVENT_INDEX, SESSIONS, SNAPSHOTS};
+use crate::tables::{BRANCH_HEADS, EVENT_INDEX, EVENTS, SESSIONS, SNAPSHOTS};
 
 /// Notification payload broadcast when new events are appended.
 #[derive(Debug, Clone)]
@@ -39,33 +39,28 @@ impl RedbJournal {
     ///
     /// Creates all required tables if they do not already exist.
     pub fn open(path: impl AsRef<Path>) -> LagoResult<Self> {
-        let db = Database::create(path.as_ref()).map_err(|e| {
-            LagoError::Journal(format!("failed to open redb database: {e}"))
-        })?;
+        let db = Database::create(path.as_ref())
+            .map_err(|e| LagoError::Journal(format!("failed to open redb database: {e}")))?;
 
         // Ensure all tables exist by opening a write transaction.
         {
             let txn = db.begin_write().map_err(|e| {
                 LagoError::Journal(format!("failed to begin write txn for table init: {e}"))
             })?;
-            txn.open_table(EVENTS).map_err(|e| {
-                LagoError::Journal(format!("failed to open events table: {e}"))
-            })?;
+            txn.open_table(EVENTS)
+                .map_err(|e| LagoError::Journal(format!("failed to open events table: {e}")))?;
             txn.open_table(EVENT_INDEX).map_err(|e| {
                 LagoError::Journal(format!("failed to open event_index table: {e}"))
             })?;
             txn.open_table(BRANCH_HEADS).map_err(|e| {
                 LagoError::Journal(format!("failed to open branch_heads table: {e}"))
             })?;
-            txn.open_table(SESSIONS).map_err(|e| {
-                LagoError::Journal(format!("failed to open sessions table: {e}"))
-            })?;
-            txn.open_table(SNAPSHOTS).map_err(|e| {
-                LagoError::Journal(format!("failed to open snapshots table: {e}"))
-            })?;
-            txn.commit().map_err(|e| {
-                LagoError::Journal(format!("failed to commit table init: {e}"))
-            })?;
+            txn.open_table(SESSIONS)
+                .map_err(|e| LagoError::Journal(format!("failed to open sessions table: {e}")))?;
+            txn.open_table(SNAPSHOTS)
+                .map_err(|e| LagoError::Journal(format!("failed to open snapshots table: {e}")))?;
+            txn.commit()
+                .map_err(|e| LagoError::Journal(format!("failed to commit table init: {e}")))?;
         }
 
         let (notify_tx, _) = broadcast::channel(4096);
@@ -185,26 +180,29 @@ impl RedbJournal {
                     .map_err(|e| LagoError::Journal(format!("range scan: {e}")))?;
 
                 for item in range {
-                    let (_, value) = item
-                        .map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
+                    let (_, value) =
+                        item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
                     let envelope: EventEnvelope = serde_json::from_str(value.value())?;
 
                     // Filter: after_seq is exclusive
                     if let Some(after_seq) = query.after_seq
-                        && envelope.seq <= after_seq {
-                            continue;
-                        }
+                        && envelope.seq <= after_seq
+                    {
+                        continue;
+                    }
                     // Filter: before_seq is exclusive
                     if let Some(before_seq) = query.before_seq
-                        && envelope.seq >= before_seq {
-                            continue;
-                        }
+                        && envelope.seq >= before_seq
+                    {
+                        continue;
+                    }
 
                     results.push(envelope);
                     if let Some(limit) = query.limit
-                        && results.len() >= limit {
-                            break;
-                        }
+                        && results.len() >= limit
+                    {
+                        break;
+                    }
                 }
             }
             (Some(session_id), None) => {
@@ -223,24 +221,27 @@ impl RedbJournal {
                     .map_err(|e| LagoError::Journal(format!("range scan: {e}")))?;
 
                 for item in range {
-                    let (_, value) = item
-                        .map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
+                    let (_, value) =
+                        item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
                     let envelope: EventEnvelope = serde_json::from_str(value.value())?;
 
                     if let Some(after_seq) = query.after_seq
-                        && envelope.seq <= after_seq {
-                            continue;
-                        }
+                        && envelope.seq <= after_seq
+                    {
+                        continue;
+                    }
                     if let Some(before_seq) = query.before_seq
-                        && envelope.seq >= before_seq {
-                            continue;
-                        }
+                        && envelope.seq >= before_seq
+                    {
+                        continue;
+                    }
 
                     results.push(envelope);
                     if let Some(limit) = query.limit
-                        && results.len() >= limit {
-                            break;
-                        }
+                        && results.len() >= limit
+                    {
+                        break;
+                    }
                 }
             }
             (None, _) => {
@@ -250,33 +251,38 @@ impl RedbJournal {
                     .map_err(|e| LagoError::Journal(format!("iter: {e}")))?;
 
                 for item in range {
-                    let (_key, value) = item
-                        .map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
+                    let (_key, value) =
+                        item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
                     let json_str: &str = value.value();
                     let envelope: EventEnvelope = serde_json::from_str(json_str)?;
 
                     if let Some(ref sid) = query.session_id
-                        && envelope.session_id.as_str() != sid.as_str() {
-                            continue;
-                        }
+                        && envelope.session_id.as_str() != sid.as_str()
+                    {
+                        continue;
+                    }
                     if let Some(ref bid) = query.branch_id
-                        && envelope.branch_id.as_str() != bid.as_str() {
-                            continue;
-                        }
+                        && envelope.branch_id.as_str() != bid.as_str()
+                    {
+                        continue;
+                    }
                     if let Some(after_seq) = query.after_seq
-                        && envelope.seq <= after_seq {
-                            continue;
-                        }
+                        && envelope.seq <= after_seq
+                    {
+                        continue;
+                    }
                     if let Some(before_seq) = query.before_seq
-                        && envelope.seq >= before_seq {
-                            continue;
-                        }
+                        && envelope.seq >= before_seq
+                    {
+                        continue;
+                    }
 
                     results.push(envelope);
                     if let Some(limit) = query.limit
-                        && results.len() >= limit {
-                            break;
-                        }
+                        && results.len() >= limit
+                    {
+                        break;
+                    }
                 }
             }
         }
@@ -410,11 +416,10 @@ impl Journal for RedbJournal {
         let notify_tx = self.notify_tx.clone();
         Box::pin(async move {
             let events = vec![event];
-            let (last_seq, notifications) = tokio::task::spawn_blocking(move || {
-                Self::append_batch_blocking(&db, events)
-            })
-            .await
-            .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))??;
+            let (last_seq, notifications) =
+                tokio::task::spawn_blocking(move || Self::append_batch_blocking(&db, events))
+                    .await
+                    .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))??;
 
             for notification in notifications {
                 let _ = notify_tx.send(notification);
@@ -434,11 +439,10 @@ impl Journal for RedbJournal {
             if events.is_empty() {
                 return Ok(0);
             }
-            let (last_seq, notifications) = tokio::task::spawn_blocking(move || {
-                Self::append_batch_blocking(&db, events)
-            })
-            .await
-            .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))??;
+            let (last_seq, notifications) =
+                tokio::task::spawn_blocking(move || Self::append_batch_blocking(&db, events))
+                    .await
+                    .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))??;
 
             for notification in notifications {
                 let _ = notify_tx.send(notification);
@@ -497,9 +501,8 @@ impl Journal for RedbJournal {
         session_id: SessionId,
         branch_id: BranchId,
         after_seq: SeqNo,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = LagoResult<EventStream>> + Send + '_>,
-    > {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<EventStream>> + Send + '_>>
+    {
         let db = Arc::clone(&self.db);
         let rx = self.notify_tx.subscribe();
         Box::pin(async move {
@@ -523,9 +526,8 @@ impl Journal for RedbJournal {
     fn get_session(
         &self,
         session_id: &SessionId,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = LagoResult<Option<Session>>> + Send + '_>,
-    > {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<Option<Session>>> + Send + '_>>
+    {
         let db = Arc::clone(&self.db);
         let sid = session_id.as_str().to_string();
         Box::pin(async move {
@@ -551,7 +553,7 @@ impl Journal for RedbJournal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lago_core::event::{EventPayload, EventEnvelope};
+    use lago_core::event::{EventEnvelope, EventPayload};
     use lago_core::session::SessionConfig;
     use std::collections::HashMap;
     use tempfile::TempDir;
@@ -602,9 +604,11 @@ mod tests {
 
         // Read back via query
         let results = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("main")))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("main")),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -621,9 +625,11 @@ mod tests {
         assert_eq!(last_seq, 5);
 
         let results = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("main")))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("main")),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 5);
@@ -643,10 +649,12 @@ mod tests {
         journal.append_batch(events).await.unwrap();
 
         let results = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("main"))
-                .after(5))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("main"))
+                    .after(5),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 5);
@@ -660,10 +668,12 @@ mod tests {
         journal.append_batch(events).await.unwrap();
 
         let results = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("main"))
-                .before(4))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("main"))
+                    .before(4),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 3);
@@ -677,10 +687,12 @@ mod tests {
         journal.append_batch(events).await.unwrap();
 
         let results = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("main"))
-                .limit(5))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("main"))
+                    .limit(5),
+            )
             .await
             .unwrap();
         assert_eq!(results.len(), 5);
@@ -695,26 +707,29 @@ mod tests {
 
         // Only "main"
         let main_events = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("main")))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("main")),
+            )
             .await
             .unwrap();
         assert_eq!(main_events.len(), 2);
 
         // Only "dev"
         let dev_events = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1"))
-                .branch(BranchId::from_string("dev")))
+            .read(
+                EventQuery::new()
+                    .session(SessionId::from_string("s1"))
+                    .branch(BranchId::from_string("dev")),
+            )
             .await
             .unwrap();
         assert_eq!(dev_events.len(), 1);
 
         // All branches for session
         let all_events = journal
-            .read(EventQuery::new()
-                .session(SessionId::from_string("s1")))
+            .read(EventQuery::new().session(SessionId::from_string("s1")))
             .await
             .unwrap();
         assert_eq!(all_events.len(), 3);

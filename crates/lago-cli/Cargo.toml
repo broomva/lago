@@ -1,12 +1,14 @@
 [package]
 name = "lago"
+description = "CLI tool for the Lago event-sourced agent runtime"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
-description.workspace = true
 repository.workspace = true
 authors.workspace = true
-publish = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
 
 [[bin]]
 name = "lago"
@@ -20,7 +22,7 @@ lago-fs.workspace = true
 lago-ingest.workspace = true
 lago-api.workspace = true
 lago-policy.workspace = true
-lagod = { path = "../lagod" }
+lagod = { version = "0.1.0", path = "../lagod" }
 reqwest = { version = "0.12", features = ["json"] }
 clap.workspace = true
 tokio.workspace = true

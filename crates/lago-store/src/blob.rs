@@ -147,14 +147,16 @@ mod tests {
     #[test]
     fn exists_returns_false_for_missing_blob() {
         let (_dir, store) = temp_store();
-        let hash = BlobHash::from_hex("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
+        let hash =
+            BlobHash::from_hex("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
         assert!(!store.exists(&hash));
     }
 
     #[test]
     fn get_missing_blob_returns_error() {
         let (_dir, store) = temp_store();
-        let hash = BlobHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000");
+        let hash =
+            BlobHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000");
         let result = store.get(&hash);
         assert!(result.is_err());
     }
@@ -171,7 +173,8 @@ mod tests {
     #[test]
     fn delete_missing_blob_returns_error() {
         let (_dir, store) = temp_store();
-        let hash = BlobHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000");
+        let hash =
+            BlobHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000");
         let result = store.delete(&hash);
         assert!(result.is_err());
     }

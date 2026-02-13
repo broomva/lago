@@ -1,59 +1,85 @@
 name: Release
 
 on:
-    push:
-        tags:
-            - "v*"
+  push:
+    tags:
+      - "v*"
 
 permissions:
-    contents: write
+  contents: write
 
 jobs:
-    build:
-        name: Build ${{ matrix.target }}
-        runs-on: ${{ matrix.os }}
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      target: x86_64-unknown-linux-gnu
-                      artifact_name: lago
-                      asset_name: lago-linux-amd64
-                    - os: macos-latest
-                      target: x86_64-apple-darwin
-                      artifact_name: lago
-                      asset_name: lago-darwin-amd64
-                    - os: macos-14
-                      target: aarch64-apple-darwin
-                      artifact_name: lago
-                      asset_name: lago-darwin-arm64
-                    - os: windows-latest
-                      target: x86_64-pc-windows-msvc
-                      artifact_name: lago.exe
-                      asset_name: lago-windows-amd64.exe
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate changelog
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
 
-        steps:
-            - uses: actions/checkout@v4
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: changelog
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: lago
+            asset_name: lago-linux-amd64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: lago
+            asset_name: lago-darwin-amd64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: lago
+            asset_name: lago-darwin-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: lago.exe
+            asset_name: lago-windows-amd64.exe
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  targets: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Build
-              run: cargo build --release --bin lago --target ${{ matrix.target }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-            - name: Rename binary (Unix)
-              if: matrix.os != 'windows-latest'
-              run: mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
 
-            - name: Rename binary (Windows)
-              if: matrix.os == 'windows-latest'
-              run: move target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Upload Release Asset
-              uses: softprops/action-gh-release@v1
-              if: startsWith(github.ref, 'refs/tags/')
-              with:
-                  files: ${{ matrix.asset_name }}
+      - name: Build
+        run: cargo build --release --bin lago --target ${{ matrix.target }}
+
+      - name: Rename binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
+      - name: Rename binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: move target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ needs.changelog.outputs.changelog }}
+          files: ${{ matrix.asset_name }}

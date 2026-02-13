@@ -20,6 +20,6 @@ pub mod tables;
 pub mod wal;
 
 pub use redb_journal::{EventNotification, RedbJournal};
-pub use snapshot::{create_snapshot, load_snapshot, should_snapshot, SNAPSHOT_THRESHOLD};
+pub use snapshot::{SNAPSHOT_THRESHOLD, create_snapshot, load_snapshot, should_snapshot};
 pub use stream::EventTailStream;
 pub use wal::Wal;

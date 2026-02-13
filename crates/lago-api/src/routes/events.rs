@@ -106,9 +106,7 @@ pub async fn stream_events(
         .journal
         .get_session(&session_id)
         .await?
-        .ok_or_else(|| {
-            ApiError::NotFound(format!("session not found: {session_id}"))
-        })?;
+        .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
     // Open a tailing event stream from the journal
     let event_stream = state

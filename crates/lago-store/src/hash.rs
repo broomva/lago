@@ -21,11 +21,7 @@ pub fn verify_hash(data: &[u8], expected: &BlobHash) -> bool {
 mod hex {
     /// Encode bytes as lowercase hex string.
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        bytes
-            .as_ref()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 }
 
@@ -62,7 +58,8 @@ mod tests {
     #[test]
     fn verify_mismatched_hash() {
         let data = b"test data";
-        let wrong = BlobHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000");
+        let wrong =
+            BlobHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000");
         assert!(!verify_hash(data, &wrong));
     }
 }

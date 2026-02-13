@@ -1,5 +1,5 @@
-use lago_core::event::EventPayload;
 use lago_core::EventEnvelope;
+use lago_core::event::EventPayload;
 use serde_json::json;
 
 use super::format::{SseFormat, SseFrame};
@@ -234,7 +234,9 @@ mod tests {
     fn non_message_events_filtered() {
         let fmt = AnthropicFormat;
         let event = make_envelope(
-            EventPayload::FileDelete { path: "/tmp".into() },
+            EventPayload::FileDelete {
+                path: "/tmp".into(),
+            },
             1,
         );
         assert!(fmt.format(&event).is_empty());

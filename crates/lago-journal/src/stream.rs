@@ -53,18 +53,18 @@ impl EventTailStream {
 
     /// Fetch new events from the database for our session/branch after last_seq.
     fn fetch_new_events(&self) -> LagoResult<Vec<EventEnvelope>> {
-        let txn = self.db.begin_read().map_err(|e| {
-            LagoError::Journal(format!("begin_read failed: {e}"))
-        })?;
-        let table = txn.open_table(EVENTS).map_err(|e| {
-            LagoError::Journal(format!("open events table: {e}"))
-        })?;
+        let txn = self
+            .db
+            .begin_read()
+            .map_err(|e| LagoError::Journal(format!("begin_read failed: {e}")))?;
+        let table = txn
+            .open_table(EVENTS)
+            .map_err(|e| LagoError::Journal(format!("open events table: {e}")))?;
 
         let start_seq = self.last_seq + 1;
         let start_key =
             encode_event_key(self.session_id.as_str(), self.branch_id.as_str(), start_seq);
-        let end_key =
-            encode_event_key(self.session_id.as_str(), self.branch_id.as_str(), u64::MAX);
+        let end_key = encode_event_key(self.session_id.as_str(), self.branch_id.as_str(), u64::MAX);
 
         let range = table
             .range(start_key.as_slice()..=end_key.as_slice())
@@ -72,8 +72,7 @@ impl EventTailStream {
 
         let mut events = Vec::new();
         for item in range {
-            let (_, value) =
-                item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
+            let (_, value) = item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
             let envelope: EventEnvelope = serde_json::from_str(value.value())?;
             events.push(envelope);
         }

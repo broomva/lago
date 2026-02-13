@@ -1,5 +1,5 @@
-use lago_core::event::EventPayload;
 use lago_core::EventEnvelope;
+use lago_core::event::EventPayload;
 use serde_json::json;
 
 use super::format::{SseFormat, SseFrame};
@@ -14,9 +14,7 @@ pub struct VercelFormat;
 impl SseFormat for VercelFormat {
     fn format(&self, event: &EventEnvelope) -> Vec<SseFrame> {
         match &event.payload {
-            EventPayload::Message {
-                content, ..
-            } => {
+            EventPayload::Message { content, .. } => {
                 let frame = json!({
                     "type": "text-delta",
                     "id": event.event_id.to_string(),
@@ -62,10 +60,7 @@ impl SseFormat for VercelFormat {
     }
 
     fn extra_headers(&self) -> Vec<(String, String)> {
-        vec![(
-            "x-vercel-ai-data-stream".to_string(),
-            "v1".to_string(),
-        )]
+        vec![("x-vercel-ai-data-stream".to_string(), "v1".to_string())]
     }
 
     fn name(&self) -> &str {

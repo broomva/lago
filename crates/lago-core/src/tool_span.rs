@@ -68,7 +68,11 @@ mod tests {
 
     #[test]
     fn span_serde_roundtrip() {
-        let span = ToolSpan::new("call-3".into(), "exec".into(), serde_json::json!({"cmd": "ls"}));
+        let span = ToolSpan::new(
+            "call-3".into(),
+            "exec".into(),
+            serde_json::json!({"cmd": "ls"}),
+        );
         let json = serde_json::to_string(&span).unwrap();
         let back: ToolSpan = serde_json::from_str(&json).unwrap();
         assert_eq!(back.call_id, "call-3");
