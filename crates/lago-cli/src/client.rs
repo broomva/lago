@@ -1,6 +1,5 @@
 use lago_api::routes::sessions::{CreateSessionRequest, CreateSessionResponse, SessionResponse};
 use reqwest::StatusCode;
-use std::collections::HashMap;
 
 pub struct Client {
     base_url: String,

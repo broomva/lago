@@ -46,8 +46,6 @@ pub async fn create(
 
 /// List all sessions.
 pub async fn list(data_dir: &Path, api_port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let mut sessions = Vec::new();
-
     // Try API client
     let client = Client::new(api_port);
     if match client.list_sessions().await {
@@ -89,7 +87,7 @@ pub async fn list(data_dir: &Path, api_port: u16) -> Result<(), Box<dyn std::err
     // Fallback
     debug!("using direct DB access to list sessions");
     let journal = open_journal(data_dir)?;
-    sessions = journal.list_sessions().await?;
+    let sessions = journal.list_sessions().await?;
 
     if sessions.is_empty() {
         println!("No sessions found.");
@@ -144,7 +142,7 @@ pub async fn show(
 
     let branch_names: Vec<String> = session.branches.iter().map(|b| b.to_string()).collect();
     print_session_details(
-        &session.session_id.to_string(),
+        session.session_id.as_ref(),
         &session.config.name,
         session.created_at,
         &session.config.model,
