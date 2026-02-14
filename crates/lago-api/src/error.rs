@@ -68,6 +68,16 @@ impl IntoResponse for ApiError {
                     "serialization_error",
                     format!("serialization error: {e}"),
                 ),
+                LagoError::HashLine(e) => (
+                    StatusCode::BAD_REQUEST,
+                    "hashline_error",
+                    format!("hashline error: {e}"),
+                ),
+                LagoError::Sandbox(msg) => (
+                    StatusCode::BAD_REQUEST,
+                    "sandbox_error",
+                    format!("sandbox error: {msg}"),
+                ),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
@@ -184,5 +194,23 @@ mod tests {
             ApiError::BadRequest(msg) => assert!(msg.contains("invalid JSON")),
             _ => panic!("expected BadRequest"),
         }
+    }
+
+    #[test]
+    fn api_error_from_lago_hashline() {
+        let hl_err = lago_core::hashline::HashLineError::LineOutOfBounds {
+            line_num: 10,
+            total_lines: 5,
+        };
+        let e: ApiError = LagoError::HashLine(hl_err).into();
+        let resp = e.into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn api_error_from_lago_sandbox() {
+        let e: ApiError = LagoError::Sandbox("container failed".into()).into();
+        let resp = e.into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }

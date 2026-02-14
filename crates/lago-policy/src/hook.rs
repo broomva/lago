@@ -159,6 +159,7 @@ mod tests {
             risk: Some(RiskLevel::Medium),
             session_id: "test-session".to_string(),
             role: None,
+            sandbox_tier: None,
         }
     }
 

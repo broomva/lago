@@ -1,5 +1,6 @@
 use lago_core::error::{LagoError, LagoResult};
 use lago_core::event::PolicyDecisionKind;
+use lago_core::sandbox::SandboxTier;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -30,6 +31,8 @@ pub struct RuleConfig {
     pub decision: PolicyDecisionKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explanation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_sandbox: Option<SandboxTier>,
 }
 
 /// TOML-friendly role configuration.
@@ -72,6 +75,7 @@ impl PolicyConfig {
                 condition: rule_cfg.condition,
                 decision: rule_cfg.decision,
                 explanation: rule_cfg.explanation,
+                required_sandbox: rule_cfg.required_sandbox,
             });
         }
 
@@ -208,6 +212,7 @@ message = "File operation detected"
             risk: None,
             session_id: "s1".to_string(),
             role: None,
+            sandbox_tier: None,
         };
         let decision = engine.evaluate(&ctx);
         assert_eq!(decision.decision, PolicyDecisionKind::Deny);
@@ -220,6 +225,7 @@ message = "File operation detected"
             risk: Some(RiskLevel::Critical),
             session_id: "s1".to_string(),
             role: None,
+            sandbox_tier: None,
         };
         let decision = engine.evaluate(&ctx);
         assert_eq!(decision.decision, PolicyDecisionKind::RequireApproval);
@@ -232,6 +238,7 @@ message = "File operation detected"
             risk: Some(RiskLevel::Low),
             session_id: "s1".to_string(),
             role: None,
+            sandbox_tier: None,
         };
         let decision = engine.evaluate(&ctx);
         assert_eq!(decision.decision, PolicyDecisionKind::Allow);
@@ -249,5 +256,81 @@ message = "File operation detected"
     fn invalid_toml_returns_error() {
         let result = PolicyConfig::from_toml("not valid [[[toml");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn config_with_required_sandbox() {
+        let toml = r#"
+[[rules]]
+id = "sandbox-shell"
+name = "Shell requires container"
+priority = 1
+decision = "allow"
+required_sandbox = "container"
+
+[rules.condition]
+type = "ToolName"
+value = "exec_shell"
+"#;
+        let config = PolicyConfig::from_toml(toml).expect("should parse");
+        assert_eq!(config.rules.len(), 1);
+        assert_eq!(
+            config.rules[0].required_sandbox,
+            Some(lago_core::sandbox::SandboxTier::Container)
+        );
+
+        let (engine, _, _) = config.into_engine();
+        assert_eq!(
+            engine.rules()[0].required_sandbox,
+            Some(lago_core::sandbox::SandboxTier::Container)
+        );
+    }
+
+    #[test]
+    fn config_with_sandbox_tier_at_least_condition() {
+        let toml = r#"
+[[rules]]
+id = "need-sandbox"
+name = "Allow only in sandbox"
+priority = 1
+decision = "allow"
+
+[rules.condition]
+type = "SandboxTierAtLeast"
+value = "process"
+"#;
+        let config = PolicyConfig::from_toml(toml).expect("should parse");
+        assert_eq!(config.rules.len(), 1);
+
+        let (engine, _, _) = config.into_engine();
+        use lago_core::policy::PolicyContext;
+        use serde_json::json;
+
+        // Without sandbox -> no match -> default allow (no rules matched)
+        let ctx = PolicyContext {
+            tool_name: "any_tool".to_string(),
+            arguments: json!({}),
+            category: None,
+            risk: None,
+            session_id: "s1".to_string(),
+            role: None,
+            sandbox_tier: None,
+        };
+        let decision = engine.evaluate(&ctx);
+        // No rules matched (SandboxTierAtLeast doesn't match without tier) -> default allow
+        assert!(decision.rule_id.is_none());
+
+        // With Process sandbox -> matches
+        let ctx = PolicyContext {
+            tool_name: "any_tool".to_string(),
+            arguments: json!({}),
+            category: None,
+            risk: None,
+            session_id: "s1".to_string(),
+            role: None,
+            sandbox_tier: Some(lago_core::sandbox::SandboxTier::Process),
+        };
+        let decision = engine.evaluate(&ctx);
+        assert_eq!(decision.rule_id.as_deref(), Some("need-sandbox"));
     }
 }

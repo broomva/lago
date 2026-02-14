@@ -1,5 +1,6 @@
 use lago_core::event::{PolicyDecisionKind, RiskLevel};
 use lago_core::policy::PolicyContext;
+use lago_core::sandbox::SandboxTier;
 use serde::{Deserialize, Serialize};
 
 /// A policy rule that maps a condition to a decision.
@@ -12,6 +13,9 @@ pub struct Rule {
     pub condition: MatchCondition,
     pub decision: PolicyDecisionKind,
     pub explanation: Option<String>,
+    /// If set, the tool must run in a sandbox of at least this tier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_sandbox: Option<SandboxTier>,
 }
 
 /// Conditions that can be evaluated against a `PolicyContext`.
@@ -32,6 +36,8 @@ pub enum MatchCondition {
     Or(Vec<MatchCondition>),
     /// Negation of a sub-condition.
     Not(Box<MatchCondition>),
+    /// Match if the context's sandbox tier >= the given threshold.
+    SandboxTierAtLeast(SandboxTier),
     /// Always matches (catch-all).
     Always,
 }
@@ -56,6 +62,11 @@ impl MatchCondition {
             MatchCondition::Or(conditions) => conditions.iter().any(|c| c.matches(ctx)),
 
             MatchCondition::Not(inner) => !inner.matches(ctx),
+
+            MatchCondition::SandboxTierAtLeast(threshold) => match &ctx.sandbox_tier {
+                Some(tier) => tier >= threshold,
+                None => false,
+            },
 
             MatchCondition::Always => true,
         }
@@ -128,6 +139,7 @@ mod tests {
             risk: Some(RiskLevel::Medium),
             session_id: "test-session".to_string(),
             role: Some("developer".to_string()),
+            sandbox_tier: None,
         }
     }
 
@@ -223,5 +235,58 @@ mod tests {
         assert!(match_glob("file_write", "file_write"));
         assert!(!match_glob("file_write", "file_read"));
         assert!(match_glob("f*_w*e", "file_write"));
+    }
+
+    #[test]
+    fn sandbox_tier_at_least() {
+        let cond = MatchCondition::SandboxTierAtLeast(SandboxTier::Process);
+
+        // No sandbox tier set -> doesn't match
+        let ctx = test_ctx();
+        assert!(!cond.matches(&ctx));
+
+        // Basic tier < Process -> doesn't match
+        let mut ctx = test_ctx();
+        ctx.sandbox_tier = Some(SandboxTier::Basic);
+        assert!(!cond.matches(&ctx));
+
+        // Process tier >= Process -> matches
+        let mut ctx = test_ctx();
+        ctx.sandbox_tier = Some(SandboxTier::Process);
+        assert!(cond.matches(&ctx));
+
+        // Container tier >= Process -> matches
+        let mut ctx = test_ctx();
+        ctx.sandbox_tier = Some(SandboxTier::Container);
+        assert!(cond.matches(&ctx));
+    }
+
+    #[test]
+    fn sandbox_tier_at_least_serde_roundtrip() {
+        let cond = MatchCondition::SandboxTierAtLeast(SandboxTier::Container);
+        let json = serde_json::to_string(&cond).unwrap();
+        let back: MatchCondition = serde_json::from_str(&json).unwrap();
+        if let MatchCondition::SandboxTierAtLeast(tier) = back {
+            assert_eq!(tier, SandboxTier::Container);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn rule_with_required_sandbox() {
+        let rule = Rule {
+            id: "r1".to_string(),
+            name: "require container".to_string(),
+            priority: 1,
+            condition: MatchCondition::Always,
+            decision: PolicyDecisionKind::Allow,
+            explanation: None,
+            required_sandbox: Some(SandboxTier::Container),
+        };
+        let json = serde_json::to_string(&rule).unwrap();
+        assert!(json.contains("\"required_sandbox\":\"container\""));
+        let back: Rule = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.required_sandbox, Some(SandboxTier::Container));
     }
 }

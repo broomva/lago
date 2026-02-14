@@ -229,6 +229,39 @@ fn print_event(event: &EventEnvelope) {
                 println!("  reason: {exp}");
             }
         }
+        EventPayload::SandboxCreated {
+            sandbox_id, tier, ..
+        } => {
+            println!("  type:   SandboxCreated");
+            println!("  id:     {sandbox_id}");
+            println!("  tier:   {tier:?}");
+        }
+        EventPayload::SandboxExecuted {
+            sandbox_id,
+            command,
+            exit_code,
+            duration_ms,
+        } => {
+            println!("  type:   SandboxExecuted");
+            println!("  id:     {sandbox_id}");
+            println!("  cmd:    {command}");
+            println!("  exit:   {exit_code}");
+            println!("  dur:    {duration_ms}ms");
+        }
+        EventPayload::SandboxViolation {
+            sandbox_id,
+            violation_type,
+            details,
+        } => {
+            println!("  type:   SandboxViolation");
+            println!("  id:     {sandbox_id}");
+            println!("  kind:   {violation_type}");
+            println!("  detail: {details}");
+        }
+        EventPayload::SandboxDestroyed { sandbox_id } => {
+            println!("  type:   SandboxDestroyed");
+            println!("  id:     {sandbox_id}");
+        }
         EventPayload::Custom { event_type, data } => {
             println!("  type:   Custom({event_type})");
             let json = serde_json::to_string_pretty(data).unwrap_or_default();

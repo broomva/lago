@@ -1,4 +1,5 @@
 use crate::event::{PolicyDecisionKind, RiskLevel};
+use crate::sandbox::SandboxTier;
 use serde::{Deserialize, Serialize};
 
 /// Result of a policy evaluation.
@@ -7,6 +8,9 @@ pub struct PolicyDecision {
     pub decision: PolicyDecisionKind,
     pub rule_id: Option<String>,
     pub explanation: Option<String>,
+    /// If set, the tool must run in a sandbox of at least this tier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_sandbox: Option<SandboxTier>,
 }
 
 impl PolicyDecision {
@@ -15,6 +19,7 @@ impl PolicyDecision {
             decision: PolicyDecisionKind::Allow,
             rule_id: None,
             explanation: None,
+            required_sandbox: None,
         }
     }
 
@@ -23,6 +28,7 @@ impl PolicyDecision {
             decision: PolicyDecisionKind::Deny,
             rule_id: Some(rule_id.into()),
             explanation: Some(reason.into()),
+            required_sandbox: None,
         }
     }
 
@@ -31,6 +37,7 @@ impl PolicyDecision {
             decision: PolicyDecisionKind::RequireApproval,
             rule_id: Some(rule_id.into()),
             explanation: None,
+            required_sandbox: None,
         }
     }
 }
@@ -44,6 +51,9 @@ pub struct PolicyContext {
     pub risk: Option<RiskLevel>,
     pub session_id: String,
     pub role: Option<String>,
+    /// The sandbox tier currently available for this context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_tier: Option<SandboxTier>,
 }
 
 #[cfg(test)]
@@ -93,8 +103,38 @@ mod tests {
             risk: Some(crate::event::RiskLevel::High),
             session_id: "SESS001".to_string(),
             role: Some("admin".to_string()),
+            sandbox_tier: Some(SandboxTier::Process),
         };
         assert_eq!(ctx.tool_name, "exec");
         assert_eq!(ctx.risk, Some(crate::event::RiskLevel::High));
+        assert_eq!(ctx.sandbox_tier, Some(SandboxTier::Process));
+    }
+
+    #[test]
+    fn policy_decision_with_required_sandbox() {
+        let mut d = PolicyDecision::allow();
+        d.required_sandbox = Some(SandboxTier::Container);
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(json.contains("\"required_sandbox\":\"container\""));
+        let back: PolicyDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.required_sandbox, Some(SandboxTier::Container));
+    }
+
+    #[test]
+    fn policy_decision_required_sandbox_default_none() {
+        let d = PolicyDecision::allow();
+        assert!(d.required_sandbox.is_none());
+        let d = PolicyDecision::deny("r1", "reason");
+        assert!(d.required_sandbox.is_none());
+        let d = PolicyDecision::require_approval("r2");
+        assert!(d.required_sandbox.is_none());
+    }
+
+    #[test]
+    fn policy_context_sandbox_tier_default() {
+        // Deserialize without sandbox_tier field — should default to None
+        let json = r#"{"tool_name":"x","arguments":{},"session_id":"s"}"#;
+        let ctx: PolicyContext = serde_json::from_str(json).unwrap();
+        assert!(ctx.sandbox_tier.is_none());
     }
 }

@@ -3,11 +3,12 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use lago_core::event::{EventEnvelope, EventPayload};
+use lago_core::hashline::{HashLineEdit, HashLineFile};
 use lago_core::id::{BranchId, EventId, SessionId};
 use lago_core::{EventQuery, ManifestEntry};
 
@@ -29,15 +30,28 @@ pub struct ManifestResponse {
     pub entries: Vec<ManifestEntry>,
 }
 
+// --- Query types
+
+#[derive(Debug, Deserialize, Default)]
+pub struct FileReadQuery {
+    /// Optional format: "hashline" returns content in hashline format.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
 // --- Handlers
 
 /// GET /v1/sessions/:id/files/*path
 ///
 /// Reads a file from the session's virtual filesystem by replaying the
 /// manifest from journal events and fetching the blob from the store.
+///
+/// Supports `?format=hashline` to return content in hashline format
+/// (`N:HHHH|content` per line) with `x-format: hashline` header.
 pub async fn read_file(
     State(state): State<Arc<AppState>>,
     Path((session_id, file_path)): Path<(String, String)>,
+    Query(query): Query<FileReadQuery>,
 ) -> Result<axum::http::Response<axum::body::Body>, ApiError> {
     let session_id = SessionId::from_string(session_id.clone());
     let file_path = normalize_path(&file_path);
@@ -62,6 +76,22 @@ pub async fn read_file(
         .get(&entry.blob_hash)
         .map_err(|e| ApiError::Internal(format!("failed to read blob: {e}")))?;
 
+    // If hashline format requested, convert
+    if query.format.as_deref() == Some("hashline") {
+        let text = String::from_utf8(data)
+            .map_err(|_| ApiError::BadRequest("file is not valid UTF-8".to_string()))?;
+        let hashline_file = HashLineFile::from_content(&text);
+        let hashline_text = hashline_file.to_hashline_text();
+
+        return Ok(axum::http::Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "text/plain")
+            .header("x-format", "hashline")
+            .header("x-blob-hash", entry.blob_hash.as_str())
+            .body(axum::body::Body::from(hashline_text))
+            .unwrap());
+    }
+
     let content_type = entry
         .content_type
         .clone()
@@ -73,6 +103,86 @@ pub async fn read_file(
         .header("x-blob-hash", entry.blob_hash.as_str())
         .body(axum::body::Body::from(data))
         .unwrap())
+}
+
+/// PATCH /v1/sessions/:id/files/*path
+///
+/// Applies hashline edits to a file. Accepts a JSON array of `HashLineEdit`
+/// operations, applies them to the current file content, stores the result
+/// as a new blob, and emits a `FileWrite` event.
+pub async fn patch_file(
+    State(state): State<Arc<AppState>>,
+    Path((session_id, file_path)): Path<(String, String)>,
+    Json(edits): Json<Vec<HashLineEdit>>,
+) -> Result<(StatusCode, Json<FileWriteResponse>), ApiError> {
+    let session_id = SessionId::from_string(session_id.clone());
+    let file_path = normalize_path(&file_path);
+
+    // Verify session exists
+    state
+        .journal
+        .get_session(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
+
+    // Build manifest and read current file
+    let manifest = build_manifest(&state, &session_id).await?;
+    let entry = manifest
+        .iter()
+        .find(|e| e.path == file_path)
+        .ok_or_else(|| ApiError::NotFound(format!("file not found: {file_path}")))?;
+
+    let data = state
+        .blob_store
+        .get(&entry.blob_hash)
+        .map_err(|e| ApiError::Internal(format!("failed to read blob: {e}")))?;
+
+    let text = String::from_utf8(data)
+        .map_err(|_| ApiError::BadRequest("file is not valid UTF-8".to_string()))?;
+
+    // Apply hashline edits
+    let hashline_file = HashLineFile::from_content(&text);
+    let new_content = hashline_file
+        .apply_edits(&edits)
+        .map_err(lago_core::LagoError::from)?;
+
+    // Store new blob
+    let blob_hash = state
+        .blob_store
+        .put(new_content.as_bytes())
+        .map_err(|e| ApiError::Internal(format!("failed to store blob: {e}")))?;
+
+    let size_bytes = new_content.len() as u64;
+    let branch_id = BranchId::from_string("main");
+
+    // Emit a FileWrite event
+    let event = EventEnvelope {
+        event_id: EventId::new(),
+        session_id: session_id.clone(),
+        branch_id,
+        run_id: None,
+        seq: 0,
+        timestamp: EventEnvelope::now_micros(),
+        parent_id: None,
+        payload: EventPayload::FileWrite {
+            path: file_path.clone(),
+            blob_hash: blob_hash.clone(),
+            size_bytes,
+            content_type: None,
+        },
+        metadata: HashMap::new(),
+    };
+
+    state.journal.append(event).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(FileWriteResponse {
+            path: file_path,
+            blob_hash: blob_hash.to_string(),
+            size_bytes,
+        }),
+    ))
 }
 
 /// PUT /v1/sessions/:id/files/*path

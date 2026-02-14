@@ -38,6 +38,12 @@ pub enum LagoError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("hashline error: {0}")]
+    HashLine(#[from] crate::hashline::HashLineError),
+
+    #[error("sandbox error: {0}")]
+    Sandbox(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -111,5 +117,22 @@ mod tests {
         let bad_json: Result<serde_json::Value, _> = serde_json::from_str("{invalid");
         let e: LagoError = bad_json.unwrap_err().into();
         assert!(e.to_string().contains("serialization error"));
+    }
+
+    #[test]
+    fn error_from_hashline() {
+        let hl_err = crate::hashline::HashLineError::LineOutOfBounds {
+            line_num: 10,
+            total_lines: 5,
+        };
+        let e: LagoError = hl_err.into();
+        assert!(e.to_string().contains("hashline error"));
+        assert!(e.to_string().contains("line 10 out of bounds"));
+    }
+
+    #[test]
+    fn error_display_sandbox() {
+        let e = LagoError::Sandbox("container failed".into());
+        assert_eq!(e.to_string(), "sandbox error: container failed");
     }
 }

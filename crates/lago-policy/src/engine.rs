@@ -35,6 +35,7 @@ impl PolicyEngine {
                     decision: rule.decision,
                     rule_id: Some(rule.id.clone()),
                     explanation: rule.explanation.clone(),
+                    required_sandbox: rule.required_sandbox,
                 };
             }
         }
@@ -44,6 +45,7 @@ impl PolicyEngine {
             decision: PolicyDecisionKind::Allow,
             rule_id: None,
             explanation: None,
+            required_sandbox: None,
         }
     }
 
@@ -81,6 +83,7 @@ mod tests {
             risk,
             session_id: "sess-1".to_string(),
             role: None,
+            sandbox_tier: None,
         }
     }
 
@@ -103,6 +106,7 @@ mod tests {
             condition: MatchCondition::ToolName("exec_shell".to_string()),
             decision: PolicyDecisionKind::Deny,
             explanation: Some("shell access denied".to_string()),
+            required_sandbox: None,
         });
 
         engine.add_rule(Rule {
@@ -112,6 +116,7 @@ mod tests {
             condition: MatchCondition::Always,
             decision: PolicyDecisionKind::Allow,
             explanation: None,
+            required_sandbox: None,
         });
 
         let decision = engine.evaluate(&ctx("exec_shell", None));
@@ -135,6 +140,7 @@ mod tests {
             condition: MatchCondition::Always,
             decision: PolicyDecisionKind::Allow,
             explanation: None,
+            required_sandbox: None,
         });
 
         // Add high priority second
@@ -145,6 +151,7 @@ mod tests {
             condition: MatchCondition::RiskAtLeast(RiskLevel::Critical),
             decision: PolicyDecisionKind::Deny,
             explanation: Some("critical risk denied".to_string()),
+            required_sandbox: None,
         });
 
         // High-risk but not critical -> allow
@@ -168,11 +175,46 @@ mod tests {
             condition: MatchCondition::Always,
             decision: PolicyDecisionKind::Deny,
             explanation: None,
+            required_sandbox: None,
         });
 
         assert_eq!(engine.rules().len(), 1);
         assert!(engine.remove_rule("r1"));
         assert_eq!(engine.rules().len(), 0);
         assert!(!engine.remove_rule("r1"));
+    }
+
+    #[test]
+    fn engine_propagates_required_sandbox() {
+        use lago_core::sandbox::SandboxTier;
+
+        let mut engine = PolicyEngine::new();
+        engine.add_rule(Rule {
+            id: "sandboxed".to_string(),
+            name: "require container for shell".to_string(),
+            priority: 1,
+            condition: MatchCondition::ToolName("exec_shell".to_string()),
+            decision: PolicyDecisionKind::Allow,
+            explanation: None,
+            required_sandbox: Some(SandboxTier::Container),
+        });
+
+        let decision = engine.evaluate(&ctx("exec_shell", None));
+        assert_eq!(decision.decision, PolicyDecisionKind::Allow);
+        assert_eq!(decision.required_sandbox, Some(SandboxTier::Container));
+
+        // Rule without sandbox requirement
+        engine.add_rule(Rule {
+            id: "fallback".to_string(),
+            name: "allow all".to_string(),
+            priority: 100,
+            condition: MatchCondition::Always,
+            decision: PolicyDecisionKind::Allow,
+            explanation: None,
+            required_sandbox: None,
+        });
+
+        let decision = engine.evaluate(&ctx("file_read", None));
+        assert!(decision.required_sandbox.is_none());
     }
 }

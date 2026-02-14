@@ -29,12 +29,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/sessions/{id}/branches",
             post(routes::branches::create_branch).get(routes::branches::list_branches),
         )
-        // --- Files: GET, PUT, DELETE on the same path
+        // --- Files: GET, PUT, DELETE, PATCH on the same path
         .route(
             "/sessions/{id}/files/{*path}",
             get(routes::files::read_file)
                 .put(routes::files::write_file)
-                .delete(routes::files::delete_file),
+                .delete(routes::files::delete_file)
+                .patch(routes::files::patch_file),
         )
         // --- Manifest
         .route(

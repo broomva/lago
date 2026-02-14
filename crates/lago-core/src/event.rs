@@ -1,4 +1,5 @@
 use crate::id::*;
+use crate::sandbox::{SandboxConfig, SandboxTier};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -128,6 +129,27 @@ pub enum EventPayload {
         rule_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         explanation: Option<String>,
+    },
+
+    // --- Sandbox lifecycle
+    SandboxCreated {
+        sandbox_id: String,
+        tier: SandboxTier,
+        config: SandboxConfig,
+    },
+    SandboxExecuted {
+        sandbox_id: String,
+        command: String,
+        exit_code: i32,
+        duration_ms: u64,
+    },
+    SandboxViolation {
+        sandbox_id: String,
+        violation_type: String,
+        details: String,
+    },
+    SandboxDestroyed {
+        sandbox_id: String,
     },
 
     // --- Extension
@@ -446,5 +468,92 @@ mod tests {
             serde_json::to_string(&PolicyDecisionKind::RequireApproval).unwrap(),
             "\"require_approval\""
         );
+    }
+
+    #[test]
+    fn sandbox_created_serde_roundtrip() {
+        let payload = EventPayload::SandboxCreated {
+            sandbox_id: "sbx-001".to_string(),
+            tier: crate::sandbox::SandboxTier::Container,
+            config: crate::sandbox::SandboxConfig {
+                tier: crate::sandbox::SandboxTier::Container,
+                allowed_paths: vec!["/workspace".to_string()],
+                allowed_commands: vec!["cargo".to_string()],
+                network_access: false,
+                max_memory_mb: Some(512),
+                max_cpu_seconds: Some(60),
+            },
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"type\":\"SandboxCreated\""));
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::SandboxCreated {
+            sandbox_id, tier, ..
+        } = back
+        {
+            assert_eq!(sandbox_id, "sbx-001");
+            assert_eq!(tier, crate::sandbox::SandboxTier::Container);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn sandbox_executed_serde_roundtrip() {
+        let payload = EventPayload::SandboxExecuted {
+            sandbox_id: "sbx-001".to_string(),
+            command: "cargo test".to_string(),
+            exit_code: 0,
+            duration_ms: 1234,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::SandboxExecuted {
+            exit_code,
+            duration_ms,
+            ..
+        } = back
+        {
+            assert_eq!(exit_code, 0);
+            assert_eq!(duration_ms, 1234);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn sandbox_violation_serde_roundtrip() {
+        let payload = EventPayload::SandboxViolation {
+            sandbox_id: "sbx-001".to_string(),
+            violation_type: "network_access".to_string(),
+            details: "attempted outbound connection to 1.2.3.4:443".to_string(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::SandboxViolation {
+            violation_type,
+            details,
+            ..
+        } = back
+        {
+            assert_eq!(violation_type, "network_access");
+            assert!(details.contains("1.2.3.4"));
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn sandbox_destroyed_serde_roundtrip() {
+        let payload = EventPayload::SandboxDestroyed {
+            sandbox_id: "sbx-001".to_string(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::SandboxDestroyed { sandbox_id } = back {
+            assert_eq!(sandbox_id, "sbx-001");
+        } else {
+            panic!("wrong variant");
+        }
     }
 }
