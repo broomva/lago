@@ -914,6 +914,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "futures",
+ "http-body-util",
  "lago-core",
  "lago-fs",
  "lago-journal",
@@ -921,6 +922,7 @@ dependencies = [
  "lago-store",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-stream",

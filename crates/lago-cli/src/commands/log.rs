@@ -229,6 +229,72 @@ fn print_event(event: &EventEnvelope) {
                 println!("  reason: {exp}");
             }
         }
+        EventPayload::RunStarted {
+            provider,
+            max_iterations,
+        } => {
+            println!("  type:   RunStarted");
+            println!("  provider: {provider}");
+            println!("  max_iter: {max_iterations}");
+        }
+        EventPayload::RunFinished {
+            reason,
+            total_iterations,
+            final_answer,
+            usage,
+        } => {
+            println!("  type:   RunFinished");
+            println!("  reason: {reason}");
+            println!("  iters:  {total_iterations}");
+            if let Some(ans) = final_answer {
+                let preview = if ans.len() > 200 {
+                    format!("{}...", &ans[..200])
+                } else {
+                    ans.clone()
+                };
+                println!("  answer: {preview}");
+            }
+            if let Some(u) = usage {
+                println!(
+                    "  tokens: {} prompt + {} completion = {} total",
+                    u.prompt_tokens, u.completion_tokens, u.total_tokens
+                );
+            }
+        }
+        EventPayload::StepStarted { index } => {
+            println!("  type:   StepStarted");
+            println!("  index:  {index}");
+        }
+        EventPayload::StepFinished {
+            index,
+            stop_reason,
+            directive_count,
+        } => {
+            println!("  type:   StepFinished");
+            println!("  index:  {index}");
+            println!("  stop:   {stop_reason}");
+            println!("  directives: {directive_count}");
+        }
+        EventPayload::StatePatched {
+            index,
+            patch,
+            revision,
+        } => {
+            println!("  type:   StatePatched");
+            println!("  index:  {index}");
+            println!("  rev:    {revision}");
+            let json = serde_json::to_string_pretty(patch).unwrap_or_default();
+            let preview = if json.len() > 200 {
+                format!("{}...", &json[..200])
+            } else {
+                json
+            };
+            println!("  patch:  {preview}");
+        }
+        EventPayload::Error { error } => {
+            println!("  type:   Error");
+            println!("  error:  {error}");
+        }
         EventPayload::SandboxCreated {
             sandbox_id, tier, ..
         } => {

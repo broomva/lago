@@ -154,6 +154,7 @@ pub async fn patch_file(
 
     let size_bytes = new_content.len() as u64;
     let branch_id = BranchId::from_string("main");
+    let seq = next_seq(&state, &session_id, &branch_id).await?;
 
     // Emit a FileWrite event
     let event = EventEnvelope {
@@ -161,7 +162,7 @@ pub async fn patch_file(
         session_id: session_id.clone(),
         branch_id,
         run_id: None,
-        seq: 0,
+        seq,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::FileWrite {
@@ -212,6 +213,7 @@ pub async fn write_file(
 
     let size_bytes = body.len() as u64;
     let branch_id = BranchId::from_string("main");
+    let seq = next_seq(&state, &session_id, &branch_id).await?;
 
     // Emit a FileWrite event
     let event = EventEnvelope {
@@ -219,7 +221,7 @@ pub async fn write_file(
         session_id: session_id.clone(),
         branch_id,
         run_id: None,
-        seq: 0, // Will be assigned by the journal
+        seq,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::FileWrite {
@@ -262,13 +264,14 @@ pub async fn delete_file(
         .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
     let branch_id = BranchId::from_string("main");
+    let seq = next_seq(&state, &session_id, &branch_id).await?;
 
     let event = EventEnvelope {
         event_id: EventId::new(),
         session_id: session_id.clone(),
         branch_id,
         run_id: None,
-        seq: 0,
+        seq,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::FileDelete {
@@ -308,6 +311,16 @@ pub async fn get_manifest(
 }
 
 // --- Internal helpers
+
+/// Get the next sequence number for a session+branch.
+async fn next_seq(
+    state: &Arc<AppState>,
+    session_id: &SessionId,
+    branch_id: &BranchId,
+) -> Result<u64, ApiError> {
+    let head = state.journal.head_seq(session_id, branch_id).await?;
+    Ok(head + 1)
+}
 
 /// Build a manifest by replaying file events from the journal.
 async fn build_manifest(

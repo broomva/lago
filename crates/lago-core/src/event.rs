@@ -131,6 +131,36 @@ pub enum EventPayload {
         explanation: Option<String>,
     },
 
+    // --- Agent Lifecycle
+    RunStarted {
+        provider: String,
+        max_iterations: u32,
+    },
+    RunFinished {
+        reason: String,
+        total_iterations: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        final_answer: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        usage: Option<TokenUsage>,
+    },
+    StepStarted {
+        index: u32,
+    },
+    StepFinished {
+        index: u32,
+        stop_reason: String,
+        directive_count: usize,
+    },
+    StatePatched {
+        index: u32,
+        patch: serde_json::Value,
+        revision: u64,
+    },
+    Error {
+        error: String,
+    },
+
     // --- Sandbox lifecycle
     SandboxCreated {
         sandbox_id: String,

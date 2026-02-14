@@ -65,6 +65,41 @@ impl SseFormat for OpenAiFormat {
                 }]
             }
 
+            EventPayload::RunFinished {
+                reason,
+                final_answer,
+                ..
+            } => {
+                let finish_reason = match reason.as_str() {
+                    "Completed" | "Stop" => "stop",
+                    "MaxTokens" | "Length" => "length",
+                    "Safety" | "ContentFilter" => "content_filter",
+                    "ToolUse" => "tool_calls",
+                    _ => "stop",
+                };
+
+                // OpenAi format expects a delta with content if present, and the finish_reason
+                let chunk = json!({
+                    "id": format!("chatcmpl-{}", event.event_id),
+                    "object": "chat.completion.chunk",
+                    "created": event.timestamp / 1_000_000,
+                    "model": "lago",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {
+                            "content": final_answer,
+                        },
+                        "finish_reason": finish_reason,
+                    }],
+                });
+
+                vec![SseFrame {
+                    event: None,
+                    data: chunk.to_string(),
+                    id: Some(event.seq.to_string()),
+                }]
+            }
+
             // Non-message events are filtered out in OpenAI format
             _ => Vec::new(),
         }
