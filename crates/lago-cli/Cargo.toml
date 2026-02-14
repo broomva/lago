@@ -23,7 +23,7 @@ lago-ingest.workspace = true
 lago-api.workspace = true
 lago-policy.workspace = true
 lagod = { version = "0.2.0", path = "../lagod" }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 clap.workspace = true
 tokio.workspace = true
 toml.workspace = true
