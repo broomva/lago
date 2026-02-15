@@ -12,6 +12,26 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
     // --- Ensure data directory exists
     std::fs::create_dir_all(&config.data_dir)?;
 
+    // --- Load policy engine
+    if config.policy_path.exists() {
+        let policy_config = lago_policy::PolicyConfig::load(&config.policy_path)?;
+        let (engine, rbac, runner) = policy_config.into_engine();
+        info!(
+            rules = engine.rules().len(),
+            roles = rbac.roles().len(),
+            hooks = runner.hooks().len(),
+            path = %config.policy_path.display(),
+            "policy engine loaded"
+        );
+        // TODO: Inject engine/rbac/runner into AppState once policy middleware is wired into HTTP routes
+        let _ = (engine, rbac, runner);
+    } else {
+        info!(
+            path = %config.policy_path.display(),
+            "no policy file found, running without policy enforcement"
+        );
+    }
+
     // --- Open the redb journal
     let db_path = config.data_dir.join("journal.redb");
     let journal = lago_journal::RedbJournal::open(&db_path)?;

@@ -1,0 +1,127 @@
+# Lago Default Policy
+#
+# This file defines the baseline tool governance rules, roles, and hooks
+# for a Lago-powered agent runtime. Copy to your project root as
+# `policy.toml` and customize as needed.
+#
+# Rules are evaluated in priority order (lower number = higher priority).
+# The first matching rule wins. If no rule matches, the default is Allow.
+
+# ── Rules ────────────────────────────────────────────────────────────────
+
+# 1. Deny dangerous shell execution patterns
+[[rules]]
+id = "deny-shell-exec"
+name = "Deny direct shell execution"
+priority = 10
+decision = "deny"
+explanation = "Direct shell execution is not permitted by default. Use specific tools instead."
+
+[rules.condition]
+type = "ToolName"
+value = "exec_shell"
+
+# 2. Require approval for any critical-risk operations
+[[rules]]
+id = "approve-critical"
+name = "Require approval for critical-risk operations"
+priority = 20
+decision = "require_approval"
+
+[rules.condition]
+type = "RiskAtLeast"
+value = "critical"
+
+# 3. Require container sandbox for high-risk operations
+[[rules]]
+id = "sandbox-high-risk"
+name = "Require container sandbox for high-risk tools"
+priority = 30
+decision = "allow"
+required_sandbox = "container"
+
+[rules.condition]
+type = "RiskAtLeast"
+value = "high"
+
+# 4. Allow all filesystem operations (read/write/patch)
+[[rules]]
+id = "allow-filesystem"
+name = "Allow filesystem operations"
+priority = 50
+decision = "allow"
+
+[rules.condition]
+type = "ToolPattern"
+value = "file_*"
+
+# 5. Default: allow everything else
+[[rules]]
+id = "default-allow"
+name = "Default allow"
+priority = 1000
+decision = "allow"
+
+[rules.condition]
+type = "Always"
+
+# ── Roles ────────────────────────────────────────────────────────────────
+
+# Agent role: full access to filesystem tools, no shell
+[[roles]]
+name = "agent"
+
+[[roles.permissions]]
+type = "AllowCategory"
+value = "filesystem"
+
+[[roles.permissions]]
+type = "DenyTool"
+value = "exec_shell"
+
+# Admin role: unrestricted access
+[[roles]]
+name = "admin"
+
+[[roles.permissions]]
+type = "Admin"
+
+# Read-only role: can only use read tools
+[[roles]]
+name = "readonly"
+
+[[roles.permissions]]
+type = "AllowTool"
+value = "file_read"
+
+[[roles.permissions]]
+type = "AllowTool"
+value = "file_list"
+
+# ── Hooks ────────────────────────────────────────────────────────────────
+
+# Log all file operations for audit trail
+[[hooks]]
+name = "audit-file-ops"
+phase = "pre"
+
+[hooks.condition]
+type = "ToolPattern"
+value = "file_*"
+
+[hooks.action]
+type = "Log"
+message = "File operation initiated"
+
+# Log high-risk operations
+[[hooks]]
+name = "audit-high-risk"
+phase = "pre"
+
+[hooks.condition]
+type = "RiskAtLeast"
+value = "high"
+
+[hooks.action]
+type = "Log"
+message = "High-risk operation initiated"

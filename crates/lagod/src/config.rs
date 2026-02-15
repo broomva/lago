@@ -9,6 +9,10 @@ pub struct DaemonConfig {
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
 
+    /// Path to the policy configuration file.
+    #[serde(default = "default_policy_path")]
+    pub policy_path: PathBuf,
+
     /// Port for the gRPC ingest server.
     #[serde(default = "default_grpc_port")]
     pub grpc_port: u16,
@@ -85,6 +89,7 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             data_dir: default_data_dir(),
+            policy_path: default_policy_path(),
             grpc_port: default_grpc_port(),
             http_port: default_http_port(),
             wal_flush_interval_ms: default_wal_flush_interval_ms(),
@@ -98,6 +103,10 @@ impl Default for DaemonConfig {
 
 fn default_data_dir() -> PathBuf {
     PathBuf::from(".lago")
+}
+
+fn default_policy_path() -> PathBuf {
+    PathBuf::from("policy.toml")
 }
 
 fn default_grpc_port() -> u16 {

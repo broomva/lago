@@ -259,6 +259,30 @@ message = "File operation detected"
     }
 
     #[test]
+    fn default_policy_file_parses() {
+        let content = include_str!("../../../default-policy.toml");
+        let config = PolicyConfig::from_toml(content).expect("default-policy.toml must parse");
+        assert!(
+            !config.rules.is_empty(),
+            "default policy must have at least one rule"
+        );
+        assert!(
+            !config.roles.is_empty(),
+            "default policy must have at least one role"
+        );
+        assert!(
+            !config.hooks.is_empty(),
+            "default policy must have at least one hook"
+        );
+
+        // Verify the engine can be built from it
+        let (engine, rbac, runner) = config.into_engine();
+        assert!(engine.rules().len() >= 3);
+        assert!(rbac.roles().len() >= 2);
+        assert!(!runner.hooks().is_empty());
+    }
+
+    #[test]
     fn config_with_required_sandbox() {
         let toml = r#"
 [[rules]]

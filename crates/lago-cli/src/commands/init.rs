@@ -18,6 +18,9 @@ flush_threshold = 1000
 interval = 10000
 "#;
 
+/// Default policy file, embedded at compile time from `default-policy.toml`.
+const DEFAULT_POLICY: &str = include_str!("../../../../default-policy.toml");
+
 /// Execute the `lago init` command.
 ///
 /// Creates a `.lago` directory and a `lago.toml` configuration file at the
@@ -49,6 +52,15 @@ pub fn run(path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         fs::write(&config_path, DEFAULT_CONFIG)?;
         println!("Created config: {}", config_path.display());
+    }
+
+    // Write default policy
+    let policy_path = root.join("policy.toml");
+    if policy_path.exists() {
+        println!("Policy already exists: {}", policy_path.display());
+    } else {
+        fs::write(&policy_path, DEFAULT_POLICY)?;
+        println!("Created policy: {}", policy_path.display());
     }
 
     println!("\nLago initialized successfully.");
