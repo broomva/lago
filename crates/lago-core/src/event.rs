@@ -194,6 +194,38 @@ pub enum EventPayload {
         sandbox_id: String,
     },
 
+    // --- Memory
+    ObservationAppended {
+        scope: MemoryScope,
+        observation_ref: BlobHash,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_run_id: Option<String>,
+    },
+    ReflectionCompacted {
+        scope: MemoryScope,
+        summary_ref: BlobHash,
+        covers_through_seq: SeqNo,
+    },
+    MemoryProposed {
+        scope: MemoryScope,
+        proposal_id: MemoryId,
+        entries_ref: BlobHash,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_run_id: Option<String>,
+    },
+    MemoryCommitted {
+        scope: MemoryScope,
+        memory_id: MemoryId,
+        committed_ref: BlobHash,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        supersedes: Option<MemoryId>,
+    },
+    MemoryTombstoned {
+        scope: MemoryScope,
+        memory_id: MemoryId,
+        reason: String,
+    },
+
     // --- Extension
     Custom {
         event_type: String,
@@ -372,6 +404,36 @@ enum EventPayloadKnown {
     },
     SandboxDestroyed {
         sandbox_id: String,
+    },
+    ObservationAppended {
+        scope: MemoryScope,
+        observation_ref: BlobHash,
+        #[serde(default)]
+        source_run_id: Option<String>,
+    },
+    ReflectionCompacted {
+        scope: MemoryScope,
+        summary_ref: BlobHash,
+        covers_through_seq: SeqNo,
+    },
+    MemoryProposed {
+        scope: MemoryScope,
+        proposal_id: MemoryId,
+        entries_ref: BlobHash,
+        #[serde(default)]
+        source_run_id: Option<String>,
+    },
+    MemoryCommitted {
+        scope: MemoryScope,
+        memory_id: MemoryId,
+        committed_ref: BlobHash,
+        #[serde(default)]
+        supersedes: Option<MemoryId>,
+    },
+    MemoryTombstoned {
+        scope: MemoryScope,
+        memory_id: MemoryId,
+        reason: String,
     },
     Custom {
         event_type: String,
@@ -571,6 +633,55 @@ impl From<EventPayloadKnown> for EventPayload {
             EventPayloadKnown::SandboxDestroyed { sandbox_id } => {
                 EventPayload::SandboxDestroyed { sandbox_id }
             }
+            EventPayloadKnown::ObservationAppended {
+                scope,
+                observation_ref,
+                source_run_id,
+            } => EventPayload::ObservationAppended {
+                scope,
+                observation_ref,
+                source_run_id,
+            },
+            EventPayloadKnown::ReflectionCompacted {
+                scope,
+                summary_ref,
+                covers_through_seq,
+            } => EventPayload::ReflectionCompacted {
+                scope,
+                summary_ref,
+                covers_through_seq,
+            },
+            EventPayloadKnown::MemoryProposed {
+                scope,
+                proposal_id,
+                entries_ref,
+                source_run_id,
+            } => EventPayload::MemoryProposed {
+                scope,
+                proposal_id,
+                entries_ref,
+                source_run_id,
+            },
+            EventPayloadKnown::MemoryCommitted {
+                scope,
+                memory_id,
+                committed_ref,
+                supersedes,
+            } => EventPayload::MemoryCommitted {
+                scope,
+                memory_id,
+                committed_ref,
+                supersedes,
+            },
+            EventPayloadKnown::MemoryTombstoned {
+                scope,
+                memory_id,
+                reason,
+            } => EventPayload::MemoryTombstoned {
+                scope,
+                memory_id,
+                reason,
+            },
             EventPayloadKnown::Custom { event_type, data } => {
                 EventPayload::Custom { event_type, data }
             }
@@ -626,6 +737,15 @@ pub enum PolicyDecisionKind {
     Allow,
     Deny,
     RequireApproval,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryScope {
+    Session,
+    User,
+    Agent,
+    Org,
 }
 
 #[cfg(test)]
@@ -1077,6 +1197,272 @@ mod tests {
         let json = serde_json::to_string(&envelope).unwrap();
         let back: EventEnvelope = serde_json::from_str(&json).unwrap();
         assert_eq!(back.schema_version, 1);
+    }
+
+    // --- Memory event tests
+
+    #[test]
+    fn memory_scope_serde_roundtrip() {
+        for (scope, expected) in [
+            (MemoryScope::Session, "\"session\""),
+            (MemoryScope::User, "\"user\""),
+            (MemoryScope::Agent, "\"agent\""),
+            (MemoryScope::Org, "\"org\""),
+        ] {
+            let json = serde_json::to_string(&scope).unwrap();
+            assert_eq!(json, expected);
+            let back: MemoryScope = serde_json::from_str(&json).unwrap();
+            assert_eq!(scope, back);
+        }
+    }
+
+    #[test]
+    fn memory_id_uniqueness() {
+        let a = MemoryId::new();
+        let b = MemoryId::new();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn memory_id_serde_roundtrip() {
+        let id = MemoryId::from_string("MEM001");
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, "\"MEM001\"");
+        let back: MemoryId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn observation_appended_serde_roundtrip() {
+        let payload = EventPayload::ObservationAppended {
+            scope: MemoryScope::Session,
+            observation_ref: BlobHash::from_hex("abc123"),
+            source_run_id: Some("run-1".to_string()),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"type\":\"ObservationAppended\""));
+        assert!(json.contains("\"scope\":\"session\""));
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::ObservationAppended {
+            scope,
+            observation_ref,
+            source_run_id,
+        } = back
+        {
+            assert_eq!(scope, MemoryScope::Session);
+            assert_eq!(observation_ref.as_str(), "abc123");
+            assert_eq!(source_run_id.as_deref(), Some("run-1"));
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn reflection_compacted_serde_roundtrip() {
+        let payload = EventPayload::ReflectionCompacted {
+            scope: MemoryScope::User,
+            summary_ref: BlobHash::from_hex("def456"),
+            covers_through_seq: 42,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"type\":\"ReflectionCompacted\""));
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::ReflectionCompacted {
+            scope,
+            summary_ref,
+            covers_through_seq,
+        } = back
+        {
+            assert_eq!(scope, MemoryScope::User);
+            assert_eq!(summary_ref.as_str(), "def456");
+            assert_eq!(covers_through_seq, 42);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn memory_proposed_serde_roundtrip() {
+        let payload = EventPayload::MemoryProposed {
+            scope: MemoryScope::Agent,
+            proposal_id: MemoryId::from_string("PROP001"),
+            entries_ref: BlobHash::from_hex("789abc"),
+            source_run_id: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"type\":\"MemoryProposed\""));
+        assert!(!json.contains("source_run_id")); // None fields are skipped
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::MemoryProposed {
+            scope,
+            proposal_id,
+            entries_ref,
+            source_run_id,
+        } = back
+        {
+            assert_eq!(scope, MemoryScope::Agent);
+            assert_eq!(proposal_id.as_str(), "PROP001");
+            assert_eq!(entries_ref.as_str(), "789abc");
+            assert!(source_run_id.is_none());
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn memory_committed_serde_roundtrip() {
+        let payload = EventPayload::MemoryCommitted {
+            scope: MemoryScope::Org,
+            memory_id: MemoryId::from_string("MEM001"),
+            committed_ref: BlobHash::from_hex("deadbeef"),
+            supersedes: Some(MemoryId::from_string("MEM000")),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"type\":\"MemoryCommitted\""));
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::MemoryCommitted {
+            scope,
+            memory_id,
+            committed_ref,
+            supersedes,
+        } = back
+        {
+            assert_eq!(scope, MemoryScope::Org);
+            assert_eq!(memory_id.as_str(), "MEM001");
+            assert_eq!(committed_ref.as_str(), "deadbeef");
+            assert_eq!(supersedes.unwrap().as_str(), "MEM000");
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn memory_tombstoned_serde_roundtrip() {
+        let payload = EventPayload::MemoryTombstoned {
+            scope: MemoryScope::Session,
+            memory_id: MemoryId::from_string("MEM001"),
+            reason: "stale information".to_string(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"type\":\"MemoryTombstoned\""));
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        if let EventPayload::MemoryTombstoned {
+            scope,
+            memory_id,
+            reason,
+        } = back
+        {
+            assert_eq!(scope, MemoryScope::Session);
+            assert_eq!(memory_id.as_str(), "MEM001");
+            assert_eq!(reason, "stale information");
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn memory_event_full_envelope_roundtrip() {
+        let envelope = make_test_envelope(EventPayload::ObservationAppended {
+            scope: MemoryScope::User,
+            observation_ref: BlobHash::from_hex("cafebabe"),
+            source_run_id: Some("run-42".to_string()),
+        });
+        let json = serde_json::to_string(&envelope).unwrap();
+        let back: EventEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.event_id.as_str(), "EVT001");
+        assert_eq!(back.seq, 1);
+        if let EventPayload::ObservationAppended {
+            scope,
+            observation_ref,
+            ..
+        } = &back.payload
+        {
+            assert_eq!(*scope, MemoryScope::User);
+            assert_eq!(observation_ref.as_str(), "cafebabe");
+        } else {
+            panic!("wrong variant in envelope");
+        }
+    }
+
+    #[test]
+    fn memory_optional_fields_default_on_missing() {
+        // Deserialize ObservationAppended without source_run_id
+        let json = r#"{"type":"ObservationAppended","scope":"session","observation_ref":"abc"}"#;
+        let payload: EventPayload = serde_json::from_str(json).unwrap();
+        if let EventPayload::ObservationAppended { source_run_id, .. } = payload {
+            assert!(source_run_id.is_none());
+        } else {
+            panic!("wrong variant");
+        }
+
+        // Deserialize MemoryCommitted without supersedes
+        let json =
+            r#"{"type":"MemoryCommitted","scope":"agent","memory_id":"M1","committed_ref":"aaa"}"#;
+        let payload: EventPayload = serde_json::from_str(json).unwrap();
+        if let EventPayload::MemoryCommitted { supersedes, .. } = payload {
+            assert!(supersedes.is_none());
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn memory_scope_equality_and_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(MemoryScope::Session);
+        set.insert(MemoryScope::User);
+        set.insert(MemoryScope::Agent);
+        set.insert(MemoryScope::Org);
+        assert_eq!(set.len(), 4);
+        assert!(set.contains(&MemoryScope::Session));
+        // Inserting duplicate
+        set.insert(MemoryScope::Session);
+        assert_eq!(set.len(), 4);
+    }
+
+    #[test]
+    fn existing_variants_still_work_after_memory_addition() {
+        // Verify sandbox variants still roundtrip
+        let payload = EventPayload::SandboxCreated {
+            sandbox_id: "sbx-1".to_string(),
+            tier: crate::sandbox::SandboxTier::Container,
+            config: crate::sandbox::SandboxConfig {
+                tier: crate::sandbox::SandboxTier::Container,
+                allowed_paths: vec![],
+                allowed_commands: vec![],
+                network_access: false,
+                max_memory_mb: None,
+                max_cpu_seconds: None,
+            },
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, EventPayload::SandboxCreated { .. }));
+
+        // Verify Message still works
+        let payload = EventPayload::Message {
+            role: "user".to_string(),
+            content: "test".to_string(),
+            model: None,
+            token_usage: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: EventPayload = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, EventPayload::Message { .. }));
+    }
+
+    #[test]
+    fn unknown_memory_variant_falls_back_to_custom() {
+        // A future memory event type unknown to this code version
+        let json = r#"{"type":"MemoryMerged","scope":"user","source_ids":["M1","M2"]}"#;
+        let payload: EventPayload = serde_json::from_str(json).unwrap();
+        if let EventPayload::Custom { event_type, data } = payload {
+            assert_eq!(event_type, "MemoryMerged");
+            assert_eq!(data["scope"], "user");
+        } else {
+            panic!("unknown memory variant should deserialize as Custom");
+        }
     }
 
     #[test]

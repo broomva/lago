@@ -60,6 +60,7 @@ typed_id!(BranchId);
 typed_id!(RunId);
 typed_id!(SnapshotId);
 typed_id!(ApprovalId);
+typed_id!(MemoryId);
 
 /// Content-addressed blob hash (SHA-256 hex)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

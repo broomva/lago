@@ -11,7 +11,7 @@ pub mod session;
 pub mod tool_span;
 
 pub use error::{LagoError, LagoResult};
-pub use event::{EventEnvelope, EventPayload};
+pub use event::{EventEnvelope, EventPayload, MemoryScope};
 pub use hashline::{HashLineEdit, HashLineError, HashLineFile};
 pub use id::*;
 pub use journal::{EventQuery, EventStream, Journal};
