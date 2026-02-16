@@ -35,7 +35,7 @@ impl SseFormat for VercelFormat {
                 ]
             }
 
-            EventPayload::MessageDelta { delta, .. } => {
+            EventPayload::TextDelta { delta, .. } => {
                 vec![make_frame(
                     "text-delta",
                     json!({
@@ -46,7 +46,7 @@ impl SseFormat for VercelFormat {
                 )]
             }
 
-            EventPayload::ToolInvoke {
+            EventPayload::ToolCallRequested {
                 call_id,
                 tool_name,
                 arguments,
@@ -82,7 +82,7 @@ impl SseFormat for VercelFormat {
                 ]
             }
 
-            EventPayload::ToolResult {
+            EventPayload::ToolCallCompleted {
                 call_id,
                 tool_name,
                 result,
@@ -196,10 +196,9 @@ mod tests {
     fn message_delta_produces_text_delta_frame() {
         let fmt = VercelFormat;
         let event = make_envelope(
-            EventPayload::MessageDelta {
-                role: "assistant".into(),
+            EventPayload::TextDelta {
                 delta: "chunk".into(),
-                index: 0,
+                index: Some(0),
             },
             7,
         );
@@ -214,7 +213,7 @@ mod tests {
     fn tool_invoke_produces_tool_input_frames() {
         let fmt = VercelFormat;
         let event = make_envelope(
-            EventPayload::ToolInvoke {
+            EventPayload::ToolCallRequested {
                 call_id: "call-1".into(),
                 tool_name: "read_file".into(),
                 arguments: serde_json::json!({"path": "/etc/hosts"}),
@@ -245,8 +244,9 @@ mod tests {
     fn tool_result_produces_tool_output_frame() {
         let fmt = VercelFormat;
         let event = make_envelope(
-            EventPayload::ToolResult {
-                call_id: "call-1".into(),
+            EventPayload::ToolCallCompleted {
+                tool_run_id: lago_core::protocol_bridge::aios_protocol::ToolRunId::default(),
+                call_id: Some("call-1".into()),
                 tool_name: "read_file".into(),
                 result: serde_json::json!({"content": "data"}),
                 duration_ms: 42,
@@ -269,7 +269,7 @@ mod tests {
         let event = make_envelope(
             EventPayload::FileWrite {
                 path: "/a".into(),
-                blob_hash: BlobHash::from_hex("abc"),
+                blob_hash: BlobHash::from_hex("abc").into(),
                 size_bytes: 10,
                 content_type: None,
             },
@@ -307,15 +307,13 @@ mod tests {
         let event = make_envelope(
             EventPayload::SandboxCreated {
                 sandbox_id: "sbx-001".into(),
-                tier: lago_core::sandbox::SandboxTier::Container,
-                config: lago_core::sandbox::SandboxConfig {
-                    tier: lago_core::sandbox::SandboxTier::Container,
-                    allowed_paths: vec![],
-                    allowed_commands: vec![],
-                    network_access: false,
-                    max_memory_mb: None,
-                    max_cpu_seconds: None,
-                },
+                tier: "container".into(),
+                config: serde_json::json!({
+                    "tier": "container",
+                    "allowed_paths": [],
+                    "allowed_commands": [],
+                    "network_access": false,
+                }),
             },
             20,
         );

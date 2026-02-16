@@ -42,16 +42,16 @@ impl SseFormat for OpenAiFormat {
                 }]
             }
 
-            EventPayload::MessageDelta { role, delta, index } => {
+            EventPayload::TextDelta { delta, index } => {
                 let chunk = json!({
                     "id": format!("chatcmpl-{}", event.event_id),
                     "object": "chat.completion.chunk",
                     "created": event.timestamp / 1_000_000,
                     "model": "lago",
                     "choices": [{
-                        "index": index,
+                        "index": index.unwrap_or(0),
                         "delta": {
-                            "role": role,
+                            "role": "assistant",
                             "content": delta,
                         },
                         "finish_reason": null,
@@ -173,10 +173,9 @@ mod tests {
     fn message_delta_produces_frame() {
         let fmt = OpenAiFormat;
         let event = make_envelope(
-            EventPayload::MessageDelta {
-                role: "assistant".into(),
+            EventPayload::TextDelta {
                 delta: "chunk".into(),
-                index: 0,
+                index: Some(0),
             },
             7,
         );

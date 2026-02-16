@@ -128,7 +128,7 @@ mod tests {
         let original = make_envelope(
             EventPayload::FileWrite {
                 path: "/src/lib.rs".to_string(),
-                blob_hash: BlobHash::from_hex("deadbeef"),
+                blob_hash: BlobHash::from_hex("deadbeef").into(),
                 size_bytes: 2048,
                 content_type: Some("text/rust".to_string()),
             },
@@ -152,9 +152,9 @@ mod tests {
     }
 
     #[test]
-    fn tool_invoke_roundtrip() {
+    fn tool_call_requested_roundtrip() {
         let original = make_envelope(
-            EventPayload::ToolInvoke {
+            EventPayload::ToolCallRequested {
                 call_id: "call-1".to_string(),
                 tool_name: "exec".to_string(),
                 arguments: serde_json::json!({"cmd": "ls -la"}),
@@ -164,7 +164,7 @@ mod tests {
         );
         let proto = event_to_proto(&original);
         let back = event_from_proto(proto).unwrap();
-        if let EventPayload::ToolInvoke { tool_name, .. } = &back.payload {
+        if let EventPayload::ToolCallRequested { tool_name, .. } = &back.payload {
             assert_eq!(tool_name, "exec");
         } else {
             panic!("wrong payload variant");
@@ -172,10 +172,11 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_roundtrip() {
+    fn tool_call_completed_roundtrip() {
         let original = make_envelope(
-            EventPayload::ToolResult {
-                call_id: "call-1".to_string(),
+            EventPayload::ToolCallCompleted {
+                tool_run_id: lago_core::protocol_bridge::aios_protocol::ToolRunId::default(),
+                call_id: Some("call-1".to_string()),
                 tool_name: "exec".to_string(),
                 result: serde_json::json!({"stdout": "hello"}),
                 duration_ms: 150,
@@ -185,7 +186,7 @@ mod tests {
         );
         let proto = event_to_proto(&original);
         let back = event_from_proto(proto).unwrap();
-        if let EventPayload::ToolResult {
+        if let EventPayload::ToolCallCompleted {
             status,
             duration_ms,
             ..
@@ -202,7 +203,7 @@ mod tests {
     fn approval_events_roundtrip() {
         let original = make_envelope(
             EventPayload::ApprovalRequested {
-                approval_id: ApprovalId::from_string("APR001"),
+                approval_id: ApprovalId::from_string("APR001").into(),
                 call_id: "call-1".to_string(),
                 tool_name: "rm".to_string(),
                 arguments: serde_json::json!({}),

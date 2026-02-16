@@ -66,7 +66,7 @@ pub async fn create_branch(
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::BranchCreated {
-            new_branch_id: new_branch_id.clone(),
+            new_branch_id: new_branch_id.clone().into(),
             fork_point_seq,
             name: body.name.clone(),
         },
@@ -119,15 +119,15 @@ pub async fn list_branches(
     // Extract BranchCreated events
     for event in &events {
         if let EventPayload::BranchCreated {
-            new_branch_id,
+            ref new_branch_id,
             fork_point_seq,
-            name,
-        } = &event.payload
+            ref name,
+        } = event.payload
         {
             branches.push(BranchResponse {
-                branch_id: new_branch_id.to_string(),
+                branch_id: new_branch_id.as_str().to_string(),
                 name: name.clone(),
-                fork_point_seq: *fork_point_seq,
+                fork_point_seq,
             });
         }
     }

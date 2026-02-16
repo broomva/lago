@@ -167,7 +167,7 @@ pub async fn patch_file(
         parent_id: None,
         payload: EventPayload::FileWrite {
             path: file_path.clone(),
-            blob_hash: blob_hash.clone(),
+            blob_hash: blob_hash.clone().into(),
             size_bytes,
             content_type: None,
         },
@@ -227,7 +227,7 @@ pub async fn write_file(
         parent_id: None,
         payload: EventPayload::FileWrite {
             path: file_path.clone(),
-            blob_hash: blob_hash.clone(),
+            blob_hash: blob_hash.clone().into(),
             size_bytes,
             content_type: None,
         },
@@ -343,9 +343,10 @@ async fn build_manifest(
                 size_bytes,
                 content_type,
             } => {
+                // Convert aios_protocol::BlobHash -> lago_core::BlobHash
                 manifest.apply_write(
                     path.clone(),
-                    blob_hash.clone(),
+                    lago_core::BlobHash::from_hex(blob_hash.as_str()),
                     *size_bytes,
                     content_type.clone(),
                     event.timestamp,

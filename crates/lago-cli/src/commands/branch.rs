@@ -40,7 +40,7 @@ pub async fn create(
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::BranchCreated {
-            new_branch_id: new_branch_id.clone(),
+            new_branch_id: new_branch_id.clone().into(),
             fork_point_seq: fork_point,
             name: name.to_string(),
         },

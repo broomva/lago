@@ -198,9 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn mismatched_variant_names_fall_through_as_custom() {
-        // Lago's "Error" variant doesn't match protocol's "ErrorRaised",
-        // so it falls through to Custom on the protocol side.
+    fn lago_error_raised_converts_to_protocol() {
         let envelope = EventEnvelope {
             event_id: EventId::from_string("EVT002"),
             session_id: SessionId::from_string("SESS001"),
@@ -209,18 +207,17 @@ mod tests {
             seq: 1,
             timestamp: 1_700_000_000_000_000,
             parent_id: None,
-            payload: EventPayload::Error {
-                error: "test".into(),
+            payload: EventPayload::ErrorRaised {
+                message: "test".into(),
             },
             metadata: HashMap::new(),
             schema_version: 1,
         };
 
         let proto = envelope.to_protocol().expect("convert to protocol");
-        // "Error" is unknown to protocol (it uses "ErrorRaised"), so it becomes Custom
         assert!(matches!(
             proto.kind,
-            aios_protocol::EventKind::Custom { .. }
+            aios_protocol::EventKind::ErrorRaised { .. }
         ));
     }
 }

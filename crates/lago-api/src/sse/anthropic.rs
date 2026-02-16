@@ -103,10 +103,10 @@ impl SseFormat for AnthropicFormat {
                 frames
             }
 
-            EventPayload::MessageDelta { delta, index, .. } => {
+            EventPayload::TextDelta { delta, index } => {
                 let block_delta = json!({
                     "type": "content_block_delta",
-                    "index": index,
+                    "index": index.unwrap_or(0),
                     "delta": {
                         "type": "text_delta",
                         "text": delta,
@@ -216,10 +216,9 @@ mod tests {
     fn message_delta_produces_one_frame() {
         let fmt = AnthropicFormat;
         let event = make_envelope(
-            EventPayload::MessageDelta {
-                role: "assistant".into(),
+            EventPayload::TextDelta {
                 delta: "token".into(),
-                index: 2,
+                index: Some(2),
             },
             5,
         );

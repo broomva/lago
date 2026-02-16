@@ -98,9 +98,9 @@ fn print_event(event: &EventEnvelope) {
             };
             println!("  content: {preview}");
         }
-        EventPayload::MessageDelta { role, delta, index } => {
-            println!("  type:   MessageDelta (index={index})");
-            println!("  role:   {role}");
+        EventPayload::TextDelta { delta, index } => {
+            let idx = index.unwrap_or(0);
+            println!("  type:   TextDelta (index={idx})");
             let preview = if delta.len() > 100 {
                 format!("{}...", &delta[..100])
             } else {
@@ -128,13 +128,13 @@ fn print_event(event: &EventEnvelope) {
             println!("  from:   {old_path}");
             println!("  to:     {new_path}");
         }
-        EventPayload::ToolInvoke {
+        EventPayload::ToolCallRequested {
             call_id,
             tool_name,
             arguments,
             category,
         } => {
-            println!("  type:   ToolInvoke");
+            println!("  type:   ToolCallRequested");
             println!("  tool:   {tool_name}");
             println!("  call:   {call_id}");
             if let Some(cat) = category {
@@ -148,16 +148,18 @@ fn print_event(event: &EventEnvelope) {
             };
             println!("  args:   {preview}");
         }
-        EventPayload::ToolResult {
+        EventPayload::ToolCallCompleted {
             call_id,
             tool_name,
             duration_ms,
             status,
             ..
         } => {
-            println!("  type:   ToolResult");
+            println!("  type:   ToolCallCompleted");
             println!("  tool:   {tool_name}");
-            println!("  call:   {call_id}");
+            if let Some(cid) = call_id {
+                println!("  call:   {cid}");
+            }
             println!("  status: {status:?}");
             println!("  dur:    {duration_ms}ms");
         }
@@ -184,13 +186,13 @@ fn print_event(event: &EventEnvelope) {
                 println!("  reason: {r}");
             }
         }
-        EventPayload::Snapshot {
+        EventPayload::SnapshotCreated {
             snapshot_id,
             snapshot_type,
             covers_through_seq,
             ..
         } => {
-            println!("  type:   Snapshot");
+            println!("  type:   SnapshotCreated");
             println!("  id:     {snapshot_id}");
             println!("  kind:   {snapshot_type:?}");
             println!("  covers: seq {covers_through_seq}");
@@ -281,7 +283,9 @@ fn print_event(event: &EventEnvelope) {
             revision,
         } => {
             println!("  type:   StatePatched");
-            println!("  index:  {index}");
+            if let Some(idx) = index {
+                println!("  index:  {idx}");
+            }
             println!("  rev:    {revision}");
             let json = serde_json::to_string_pretty(patch).unwrap_or_default();
             let preview = if json.len() > 200 {
@@ -291,9 +295,9 @@ fn print_event(event: &EventEnvelope) {
             };
             println!("  patch:  {preview}");
         }
-        EventPayload::Error { error } => {
-            println!("  type:   Error");
-            println!("  error:  {error}");
+        EventPayload::ErrorRaised { message } => {
+            println!("  type:   ErrorRaised");
+            println!("  error:  {message}");
         }
         EventPayload::SandboxCreated {
             sandbox_id, tier, ..

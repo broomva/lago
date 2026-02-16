@@ -45,9 +45,10 @@ impl Projection for ManifestProjection {
                 size_bytes,
                 content_type,
             } => {
+                // Convert aios_protocol::BlobHash -> lago_core::BlobHash
                 self.manifest.apply_write(
                     path.clone(),
-                    blob_hash.clone(),
+                    lago_core::BlobHash::from_hex(blob_hash.as_str()),
                     *size_bytes,
                     content_type.clone(),
                     event.timestamp,
@@ -68,8 +69,9 @@ impl Projection for ManifestProjection {
                 fork_point_seq,
                 name,
             } => {
+                // Convert aios_protocol::BranchId -> lago_core::BranchId
                 self.branch_manager.create_branch_with_id(
-                    new_branch_id.clone(),
+                    lago_core::BranchId::from_string(new_branch_id.as_str()),
                     name.clone(),
                     *fork_point_seq,
                     Some(event.branch_id.clone()),
@@ -80,8 +82,9 @@ impl Projection for ManifestProjection {
                 source_branch_id,
                 merge_seq,
             } => {
-                // Update the source branch's head to the merge sequence number
-                if let Some(branch) = self.branch_manager.get_branch_mut(source_branch_id) {
+                // Convert aios_protocol::BranchId -> lago_core::BranchId
+                let lago_branch_id = lago_core::BranchId::from_string(source_branch_id.as_str());
+                if let Some(branch) = self.branch_manager.get_branch_mut(&lago_branch_id) {
                     branch.head_seq = *merge_seq;
                 }
             }
@@ -125,7 +128,7 @@ mod tests {
             1,
             EventPayload::FileWrite {
                 path: "/src/main.rs".to_string(),
-                blob_hash: BlobHash::from_hex("abc123"),
+                blob_hash: BlobHash::from_hex("abc123").into(),
                 size_bytes: 512,
                 content_type: Some("text/x-rust".to_string()),
             },
@@ -146,7 +149,7 @@ mod tests {
             1,
             EventPayload::FileWrite {
                 path: "/tmp.txt".to_string(),
-                blob_hash: BlobHash::from_hex("aaa"),
+                blob_hash: BlobHash::from_hex("aaa").into(),
                 size_bytes: 10,
                 content_type: None,
             },
@@ -172,7 +175,7 @@ mod tests {
             1,
             EventPayload::FileWrite {
                 path: "/old.txt".to_string(),
-                blob_hash: BlobHash::from_hex("aaa"),
+                blob_hash: BlobHash::from_hex("aaa").into(),
                 size_bytes: 10,
                 content_type: None,
             },
@@ -200,7 +203,7 @@ mod tests {
         let event = make_envelope(
             5,
             EventPayload::BranchCreated {
-                new_branch_id: branch_id.clone(),
+                new_branch_id: branch_id.clone().into(),
                 fork_point_seq: 5,
                 name: "feature".to_string(),
             },
@@ -221,7 +224,7 @@ mod tests {
         let create = make_envelope(
             1,
             EventPayload::BranchCreated {
-                new_branch_id: branch_id.clone(),
+                new_branch_id: branch_id.clone().into(),
                 fork_point_seq: 1,
                 name: "feature".to_string(),
             },
@@ -232,7 +235,7 @@ mod tests {
         let merge = make_envelope(
             10,
             EventPayload::BranchMerged {
-                source_branch_id: branch_id.clone(),
+                source_branch_id: branch_id.clone().into(),
                 merge_seq: 10,
             },
         );
