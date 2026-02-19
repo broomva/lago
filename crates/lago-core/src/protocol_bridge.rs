@@ -104,11 +104,29 @@ impl EventEnvelope {
         Some(aios_protocol::EventEnvelope {
             event_id: self.event_id.clone().into(),
             session_id: self.session_id.clone().into(),
+            agent_id: self
+                .metadata
+                .get("agent_id")
+                .map(|s| aios_protocol::AgentId::from_string(s.clone()))
+                .unwrap_or_default(),
             branch_id: self.branch_id.clone().into(),
             run_id: self.run_id.clone().map(Into::into),
             seq: self.seq,
             timestamp: self.timestamp,
+            actor: self
+                .metadata
+                .get("actor")
+                .and_then(|v| serde_json::from_str::<aios_protocol::EventActor>(v).ok())
+                .unwrap_or_default(),
+            schema: self
+                .metadata
+                .get("schema")
+                .and_then(|v| serde_json::from_str::<aios_protocol::EventSchema>(v).ok())
+                .unwrap_or_default(),
             parent_id: self.parent_id.clone().map(Into::into),
+            trace_id: self.metadata.get("trace_id").cloned(),
+            span_id: self.metadata.get("span_id").cloned(),
+            digest: self.metadata.get("digest").cloned(),
             kind: protocol_kind,
             metadata: self.metadata.clone(),
             schema_version: self.schema_version,
@@ -120,6 +138,25 @@ impl EventEnvelope {
 pub fn from_protocol(envelope: &aios_protocol::EventEnvelope) -> Option<EventEnvelope> {
     let kind_json = serde_json::to_value(&envelope.kind).ok()?;
     let lago_payload: EventPayload = serde_json::from_value(kind_json).ok()?;
+    let mut metadata = envelope.metadata.clone();
+    metadata
+        .entry("agent_id".to_string())
+        .or_insert_with(|| envelope.agent_id.to_string());
+    metadata
+        .entry("actor".to_string())
+        .or_insert_with(|| serde_json::to_string(&envelope.actor).unwrap_or_default());
+    metadata
+        .entry("schema".to_string())
+        .or_insert_with(|| serde_json::to_string(&envelope.schema).unwrap_or_default());
+    if let Some(trace_id) = &envelope.trace_id {
+        metadata.insert("trace_id".to_string(), trace_id.clone());
+    }
+    if let Some(span_id) = &envelope.span_id {
+        metadata.insert("span_id".to_string(), span_id.clone());
+    }
+    if let Some(digest) = &envelope.digest {
+        metadata.insert("digest".to_string(), digest.clone());
+    }
 
     Some(EventEnvelope {
         event_id: EventId::from_string(envelope.event_id.as_str()),
@@ -136,7 +173,7 @@ pub fn from_protocol(envelope: &aios_protocol::EventEnvelope) -> Option<EventEnv
             .as_ref()
             .map(|id| EventId::from_string(id.as_str())),
         payload: lago_payload,
-        metadata: envelope.metadata.clone(),
+        metadata,
         schema_version: envelope.schema_version,
     })
 }

@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
+use axum::http::{HeaderName, HeaderValue};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
 use serde::Deserialize;
 use tracing::debug;
@@ -81,7 +83,7 @@ pub async fn stream_events(
     Path(session_id): Path<String>,
     Query(query): Query<EventStreamQuery>,
     headers: HeaderMap,
-) -> Result<Sse<impl futures::Stream<Item = Result<SseEvent, Infallible>>>, ApiError> {
+) -> Result<Response, ApiError> {
     let session_id = SessionId::from_string(session_id);
     let branch_id = BranchId::from_string(query.branch.clone());
     let format = resolve_format(&query.format)?;
@@ -116,8 +118,9 @@ pub async fn stream_events(
 
     // Map journal events through the format adapter, producing SSE frames.
     // The format Arc is cloned for each item so the closure is 'static + Send.
+    let format_for_stream = Arc::clone(&format);
     let sse_stream = event_stream.filter_map(move |result| {
-        let format = Arc::clone(&format);
+        let format = Arc::clone(&format_for_stream);
         async move {
             match result {
                 Ok(envelope) => {
@@ -143,9 +146,31 @@ pub async fn stream_events(
         .flat_map(futures::stream::iter)
         .map(Ok::<_, Infallible>);
 
-    Ok(Sse::new(flat_stream).keep_alive(
+    let combined_stream: futures::stream::BoxStream<'static, Result<SseEvent, Infallible>> =
+        if let Some(done_frame) = format.done_frame() {
+            flat_stream
+                .chain(futures::stream::once(async move {
+                    Ok::<_, Infallible>(frame_to_sse_event(done_frame))
+                }))
+                .boxed()
+        } else {
+            flat_stream.boxed()
+        };
+
+    let sse = Sse::new(combined_stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("ping"),
-    ))
+    );
+    let mut response = sse.into_response();
+    for (name, value) in format.extra_headers() {
+        if let (Ok(header_name), Ok(header_value)) = (
+            HeaderName::from_bytes(name.as_bytes()),
+            HeaderValue::from_str(&value),
+        ) {
+            response.headers_mut().insert(header_name, header_value);
+        }
+    }
+
+    Ok(response)
 }

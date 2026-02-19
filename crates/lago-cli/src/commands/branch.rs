@@ -36,7 +36,7 @@ pub async fn create(
         session_id: session_id.clone(),
         branch_id: main_branch,
         run_id: None,
-        seq: fork_point + 1,
+        seq: 0,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::BranchCreated {

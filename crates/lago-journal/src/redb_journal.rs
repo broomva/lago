@@ -1,5 +1,6 @@
 //! RedbJournal — the primary Journal trait implementation backed by redb.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -94,6 +95,7 @@ impl RedbJournal {
 
         let mut last_seq = 0u64;
         let mut notifications = Vec::with_capacity(events.len());
+        let mut branch_heads_cache: HashMap<Vec<u8>, SeqNo> = HashMap::new();
 
         {
             let mut events_table = txn
@@ -109,13 +111,28 @@ impl RedbJournal {
             for event in &events {
                 let session_str = event.session_id.as_str();
                 let branch_str = event.branch_id.as_str();
-                let seq = event.seq;
+                let branch_key = encode_branch_key(session_str, branch_str);
+                let current_head = if let Some(cached) = branch_heads_cache.get(&branch_key) {
+                    *cached
+                } else {
+                    let head = heads_table
+                        .get(branch_key.as_slice())
+                        .map_err(|e| LagoError::Journal(format!("get branch head: {e}")))?
+                        .map(|v| v.value())
+                        .unwrap_or(0);
+                    branch_heads_cache.insert(branch_key.clone(), head);
+                    head
+                };
+                let assigned_seq = current_head.saturating_add(1);
+                branch_heads_cache.insert(branch_key.clone(), assigned_seq);
 
+                let mut assigned_event = event.clone();
+                assigned_event.seq = assigned_seq;
                 // Serialize event to JSON
-                let json = serde_json::to_string(event)?;
+                let json = serde_json::to_string(&assigned_event)?;
 
                 // Encode compound key
-                let event_key = encode_event_key(session_str, branch_str, seq);
+                let event_key = encode_event_key(session_str, branch_str, assigned_seq);
 
                 // Write to events table
                 events_table
@@ -124,27 +141,20 @@ impl RedbJournal {
 
                 // Write to event index
                 index_table
-                    .insert(event.event_id.as_str(), event_key.as_slice())
+                    .insert(assigned_event.event_id.as_str(), event_key.as_slice())
                     .map_err(|e| LagoError::Journal(format!("insert event index: {e}")))?;
 
                 // Update branch head
-                let branch_key = encode_branch_key(session_str, branch_str);
-                let current_head: u64 = heads_table
-                    .get(branch_key.as_slice())
-                    .map_err(|e| LagoError::Journal(format!("get branch head: {e}")))?
-                    .map(|v| v.value())
-                    .unwrap_or(0);
-                let new_head = current_head.max(seq);
                 heads_table
-                    .insert(branch_key.as_slice(), new_head)
+                    .insert(branch_key.as_slice(), assigned_seq)
                     .map_err(|e| LagoError::Journal(format!("update branch head: {e}")))?;
 
-                last_seq = seq;
+                last_seq = assigned_seq;
 
                 notifications.push(EventNotification {
-                    session_id: event.session_id.clone(),
-                    branch_id: event.branch_id.clone(),
-                    seq,
+                    session_id: assigned_event.session_id.clone(),
+                    branch_id: assigned_event.branch_id.clone(),
+                    seq: assigned_seq,
                 });
             }
         }
@@ -768,11 +778,30 @@ mod tests {
 
         journal.append(make_event("s1", "main", 5)).await.unwrap();
         let head = journal.head_seq(&sid, &bid).await.unwrap();
-        assert_eq!(head, 5);
+        assert_eq!(head, 1);
 
         journal.append(make_event("s1", "main", 10)).await.unwrap();
         let head = journal.head_seq(&sid, &bid).await.unwrap();
-        assert_eq!(head, 10);
+        assert_eq!(head, 2);
+    }
+
+    #[tokio::test]
+    async fn append_ignores_caller_provided_seq() {
+        let (_dir, journal) = setup();
+        let sid = SessionId::from_string("s1");
+        let bid = BranchId::from_string("main");
+
+        // Caller provides non-monotonic sequence values, journal assigns 1..N.
+        journal.append(make_event("s1", "main", 99)).await.unwrap();
+        journal.append(make_event("s1", "main", 42)).await.unwrap();
+
+        let events = journal
+            .read(EventQuery::new().session(sid).branch(bid))
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].seq, 1);
+        assert_eq!(events[1].seq, 2);
     }
 
     #[tokio::test]

@@ -37,6 +37,20 @@ pub struct FileReadQuery {
     /// Optional format: "hashline" returns content in hashline format.
     #[serde(default)]
     pub format: Option<String>,
+    /// Branch to read from (default: main).
+    #[serde(default = "default_branch")]
+    pub branch: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct BranchQuery {
+    /// Branch to operate on (default: main).
+    #[serde(default = "default_branch")]
+    pub branch: String,
+}
+
+fn default_branch() -> String {
+    "main".to_string()
 }
 
 // --- Handlers
@@ -54,6 +68,7 @@ pub async fn read_file(
     Query(query): Query<FileReadQuery>,
 ) -> Result<axum::http::Response<axum::body::Body>, ApiError> {
     let session_id = SessionId::from_string(session_id.clone());
+    let branch_id = BranchId::from_string(query.branch.clone());
     let file_path = normalize_path(&file_path);
 
     // Verify session exists
@@ -64,7 +79,7 @@ pub async fn read_file(
         .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
     // Build manifest from events
-    let manifest = build_manifest(&state, &session_id).await?;
+    let manifest = build_manifest(&state, &session_id, &branch_id).await?;
 
     let entry = manifest
         .iter()
@@ -113,9 +128,11 @@ pub async fn read_file(
 pub async fn patch_file(
     State(state): State<Arc<AppState>>,
     Path((session_id, file_path)): Path<(String, String)>,
+    Query(branch): Query<BranchQuery>,
     Json(edits): Json<Vec<HashLineEdit>>,
 ) -> Result<(StatusCode, Json<FileWriteResponse>), ApiError> {
     let session_id = SessionId::from_string(session_id.clone());
+    let branch_id = BranchId::from_string(branch.branch);
     let file_path = normalize_path(&file_path);
 
     // Verify session exists
@@ -126,7 +143,7 @@ pub async fn patch_file(
         .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
     // Build manifest and read current file
-    let manifest = build_manifest(&state, &session_id).await?;
+    let manifest = build_manifest(&state, &session_id, &branch_id).await?;
     let entry = manifest
         .iter()
         .find(|e| e.path == file_path)
@@ -153,8 +170,6 @@ pub async fn patch_file(
         .map_err(|e| ApiError::Internal(format!("failed to store blob: {e}")))?;
 
     let size_bytes = new_content.len() as u64;
-    let branch_id = BranchId::from_string("main");
-    let seq = next_seq(&state, &session_id, &branch_id).await?;
 
     // Emit a FileWrite event
     let event = EventEnvelope {
@@ -162,7 +177,7 @@ pub async fn patch_file(
         session_id: session_id.clone(),
         branch_id,
         run_id: None,
-        seq,
+        seq: 0,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::FileWrite {
@@ -194,9 +209,11 @@ pub async fn patch_file(
 pub async fn write_file(
     State(state): State<Arc<AppState>>,
     Path((session_id, file_path)): Path<(String, String)>,
+    Query(branch): Query<BranchQuery>,
     body: Bytes,
 ) -> Result<(StatusCode, Json<FileWriteResponse>), ApiError> {
     let session_id = SessionId::from_string(session_id.clone());
+    let branch_id = BranchId::from_string(branch.branch);
     let file_path = normalize_path(&file_path);
 
     // Verify session exists
@@ -213,8 +230,6 @@ pub async fn write_file(
         .map_err(|e| ApiError::Internal(format!("failed to store blob: {e}")))?;
 
     let size_bytes = body.len() as u64;
-    let branch_id = BranchId::from_string("main");
-    let seq = next_seq(&state, &session_id, &branch_id).await?;
 
     // Emit a FileWrite event
     let event = EventEnvelope {
@@ -222,7 +237,7 @@ pub async fn write_file(
         session_id: session_id.clone(),
         branch_id,
         run_id: None,
-        seq,
+        seq: 0,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::FileWrite {
@@ -254,8 +269,10 @@ pub async fn write_file(
 pub async fn delete_file(
     State(state): State<Arc<AppState>>,
     Path((session_id, file_path)): Path<(String, String)>,
+    Query(branch): Query<BranchQuery>,
 ) -> Result<StatusCode, ApiError> {
     let session_id = SessionId::from_string(session_id.clone());
+    let branch_id = BranchId::from_string(branch.branch);
     let file_path = normalize_path(&file_path);
 
     // Verify session exists
@@ -265,15 +282,12 @@ pub async fn delete_file(
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
-    let branch_id = BranchId::from_string("main");
-    let seq = next_seq(&state, &session_id, &branch_id).await?;
-
     let event = EventEnvelope {
         event_id: EventId::new(),
         session_id: session_id.clone(),
         branch_id,
         run_id: None,
-        seq,
+        seq: 0,
         timestamp: EventEnvelope::now_micros(),
         parent_id: None,
         payload: EventPayload::FileDelete {
@@ -295,8 +309,10 @@ pub async fn delete_file(
 pub async fn get_manifest(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
+    Query(branch): Query<BranchQuery>,
 ) -> Result<Json<ManifestResponse>, ApiError> {
     let session_id = SessionId::from_string(session_id.clone());
+    let branch_id = BranchId::from_string(branch.branch);
 
     // Verify session exists
     state
@@ -305,7 +321,7 @@ pub async fn get_manifest(
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("session not found: {session_id}")))?;
 
-    let entries = build_manifest(&state, &session_id).await?;
+    let entries = build_manifest(&state, &session_id, &branch_id).await?;
 
     Ok(Json(ManifestResponse {
         session_id: session_id.to_string(),
@@ -315,22 +331,15 @@ pub async fn get_manifest(
 
 // --- Internal helpers
 
-/// Get the next sequence number for a session+branch.
-async fn next_seq(
-    state: &Arc<AppState>,
-    session_id: &SessionId,
-    branch_id: &BranchId,
-) -> Result<u64, ApiError> {
-    let head = state.journal.head_seq(session_id, branch_id).await?;
-    Ok(head + 1)
-}
-
 /// Build a manifest by replaying file events from the journal.
 async fn build_manifest(
     state: &Arc<AppState>,
     session_id: &SessionId,
+    branch_id: &BranchId,
 ) -> Result<Vec<ManifestEntry>, ApiError> {
-    let query = EventQuery::new().session(session_id.clone());
+    let query = EventQuery::new()
+        .session(session_id.clone())
+        .branch(branch_id.clone());
     let events = state.journal.read(query).await?;
 
     let mut manifest = lago_fs::Manifest::new();
