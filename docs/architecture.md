@@ -53,6 +53,9 @@ lago-core        (zero deps — foundation types, traits, errors)
   +-- lago-api         (HTTP REST + SSE streaming)
   |     depends on: core, journal, store, fs, policy
   |
+  +-- lago-aios-eventstore-adapter (aiOS canonical EventStorePort adapter)
+  |     depends on: core, aios-protocol
+  |
   +-- lago-cli         (CLI binary)
   |     depends on: api, journal, store
   |
@@ -70,6 +73,7 @@ lago-core        (zero deps — foundation types, traits, errors)
 | `lago-policy` | Security rules and access control | `PolicyEngine`, `RbacManager` |
 | `lago-ingest` | gRPC bidirectional streaming | `IngestServer`, `IngestClient` |
 | `lago-api` | HTTP/REST + SSE endpoints | `AppState`, `SseFormat` |
+| `lago-aios-eventstore-adapter` | Canonical aiOS event store bridge | `LagoAiosEventStoreAdapter` |
 | `lago-cli` | Command-line interface | `lago init/serve/session/log/cat` |
 | `lagod` | Daemon process | Composes journal + store + gRPC + HTTP |
 

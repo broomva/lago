@@ -8,6 +8,7 @@ members = [
     "crates/lago-ingest",
     "crates/lago-api",
     "crates/lago-policy",
+    "crates/lago-aios-eventstore-adapter",
     "crates/lago-cli",
     "crates/lagod",
 ]
