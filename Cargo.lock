@@ -955,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "lago"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "lago-api",
@@ -977,7 +977,7 @@ dependencies = [
 
 [[package]]
 name = "lago-aios-eventstore-adapter"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aios-protocol",
  "async-trait",
@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "lago-api"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "futures",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "lago-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aios-protocol",
  "futures",
@@ -1031,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "lago-fs"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lago-core",
  "lago-store",
@@ -1045,7 +1045,7 @@ dependencies = [
 
 [[package]]
 name = "lago-ingest"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "futures",
  "lago-core",
@@ -1065,7 +1065,7 @@ dependencies = [
 
 [[package]]
 name = "lago-journal"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "futures",
  "lago-core",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "lago-policy"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lago-core",
  "serde",
@@ -1093,7 +1093,7 @@ dependencies = [
 
 [[package]]
 name = "lago-store"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "lago-core",
  "serde",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "lagod"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "clap",
