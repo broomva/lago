@@ -21,5 +21,10 @@ futures-util = "0.3"
 tokio.workspace = true
 tracing.workspace = true
 
+[dev-dependencies]
+lago-journal = { workspace = true }
+serde_json.workspace = true
+tempfile = "3"
+
 [lints.rust]
 unsafe_code = "forbid"

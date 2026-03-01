@@ -984,6 +984,9 @@ dependencies = [
  "chrono",
  "futures-util",
  "lago-core",
+ "lago-journal",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
