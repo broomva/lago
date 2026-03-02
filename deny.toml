@@ -4,8 +4,8 @@ all-features = true
 [advisories]
 vulnerability = "deny"
 unmaintained = "workspace"
-yanked = "workspace"
-notice = "workspace"
+yanked = "warn"
+notice = "warn"
 
 [licenses]
 unlicensed = "deny"

@@ -154,7 +154,7 @@ mod tests {
 
     fn setup() -> (TempDir, LagoAiosEventStoreAdapter) {
         let dir = TempDir::new().unwrap();
-        let journal = Arc::new(RedbJournal::open(&dir.path().join("test.redb")).unwrap());
+        let journal = Arc::new(RedbJournal::open(dir.path().join("test.redb")).unwrap());
         (dir, LagoAiosEventStoreAdapter::new(journal))
     }
 
