@@ -201,7 +201,7 @@ mod tests {
         let required = SandboxTier::Process;
         assert!(SandboxTier::Process >= required);
         assert!(SandboxTier::Container >= required);
-        assert!(!(SandboxTier::Basic >= required));
-        assert!(!(SandboxTier::None >= required));
+        assert!(SandboxTier::Basic < required);
+        assert!(SandboxTier::None < required);
     }
 }

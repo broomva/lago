@@ -2,13 +2,11 @@
 all-features = true
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "workspace"
-yanked = "warn"
-notice = "warn"
+version = 2
+yanked = "deny"
 
 [licenses]
-unlicensed = "deny"
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
@@ -20,7 +18,6 @@ allow = [
     "Zlib",
     "OpenSSL",
 ]
-copyleft = "deny"
 
 [[licenses.clarify]]
 name = "ring"
