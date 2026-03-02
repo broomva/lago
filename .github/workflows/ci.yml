@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
@@ -16,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout sibling dependencies
+        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install protoc
@@ -26,9 +32,12 @@ jobs:
 
   test:
     name: Test
+    needs: [fmt, clippy]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout sibling dependencies
+        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install protoc
@@ -42,6 +51,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout sibling dependencies
+        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -57,7 +68,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - name: Checkout sibling dependencies
+        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
@@ -67,4 +80,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout sibling dependencies
+        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
       - uses: EmbarkStudios/cargo-deny-action@v2
