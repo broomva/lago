@@ -249,6 +249,118 @@ async fn golden_branch_fork_cursor_replay() {
     assert_eq!(events[1].seq, 5);
 }
 
+// ─── branch-merge fixtures ──────────────────────────────────────────────────
+
+#[tokio::test]
+async fn golden_branch_merge_main_events_intact() {
+    let fixtures = load_fixture("branch-merge.json");
+    assert_eq!(
+        fixtures.len(),
+        8,
+        "branch-merge fixture should have 8 events"
+    );
+
+    let (_dir, journal) = setup();
+    ingest(&journal, &fixtures).await;
+
+    // Main branch: SessionCreated, 2 Messages, BranchCreated, concurrent Message, BranchMerged = 6 events
+    let main_events = journal
+        .read(
+            EventQuery::new()
+                .session(SessionId::from_string("GOLDEN-BRANCH-MERGE"))
+                .branch(BranchId::from_string("main")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(main_events.len(), 6, "main branch should have 6 events");
+
+    // Verify event types in order
+    let p0 = payload_json(&main_events[0]);
+    assert_eq!(p0["type"], "SessionCreated");
+    assert_eq!(p0["name"], "branch-merge");
+
+    let p1 = payload_json(&main_events[1]);
+    assert_eq!(p1["type"], "Message");
+    assert_eq!(p1["role"], "user");
+    assert_eq!(p1["content"], "Start the experiment");
+
+    let p2 = payload_json(&main_events[2]);
+    assert_eq!(p2["type"], "Message");
+    assert_eq!(p2["role"], "assistant");
+
+    let p3 = payload_json(&main_events[3]);
+    assert_eq!(p3["type"], "BranchCreated");
+    assert_eq!(p3["new_branch_id"], "experiment");
+    assert_eq!(p3["fork_point_seq"], 3);
+
+    let p4 = payload_json(&main_events[4]);
+    assert_eq!(p4["type"], "Message");
+    assert_eq!(p4["role"], "user");
+    assert_eq!(p4["content"], "Continue work on main while experiment runs");
+
+    let p5 = payload_json(&main_events[5]);
+    assert_eq!(p5["type"], "BranchMerged");
+    assert_eq!(p5["source_branch_id"], "experiment");
+    assert_eq!(p5["merge_seq"], 2);
+}
+
+#[tokio::test]
+async fn golden_branch_merge_experiment_isolated() {
+    let fixtures = load_fixture("branch-merge.json");
+    let (_dir, journal) = setup();
+    ingest(&journal, &fixtures).await;
+
+    // Experiment branch: exactly 2 events (user + assistant messages)
+    let experiment_events = journal
+        .read(
+            EventQuery::new()
+                .session(SessionId::from_string("GOLDEN-BRANCH-MERGE"))
+                .branch(BranchId::from_string("experiment")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        experiment_events.len(),
+        2,
+        "experiment branch should have exactly 2 events"
+    );
+
+    let ep0 = payload_json(&experiment_events[0]);
+    assert_eq!(ep0["type"], "Message");
+    assert_eq!(ep0["role"], "user");
+    assert_eq!(ep0["content"], "Run the experiment on this branch");
+
+    let ep1 = payload_json(&experiment_events[1]);
+    assert_eq!(ep1["type"], "Message");
+    assert_eq!(ep1["role"], "assistant");
+    assert_eq!(ep1["content"], "Experiment complete. Results are positive.");
+}
+
+#[tokio::test]
+async fn golden_branch_merge_head_sequences() {
+    let fixtures = load_fixture("branch-merge.json");
+    let (_dir, journal) = setup();
+    ingest(&journal, &fixtures).await;
+
+    let main_head = journal
+        .head_seq(
+            &SessionId::from_string("GOLDEN-BRANCH-MERGE"),
+            &BranchId::from_string("main"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(main_head, 6, "main branch head_seq should be 6");
+
+    let experiment_head = journal
+        .head_seq(
+            &SessionId::from_string("GOLDEN-BRANCH-MERGE"),
+            &BranchId::from_string("experiment"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(experiment_head, 2, "experiment branch head_seq should be 2");
+}
+
 // ─── forward-compat fixtures ────────────────────────────────────────────────
 
 #[tokio::test]
@@ -316,4 +428,101 @@ async fn golden_forward_compat_known_events_unaffected() {
     assert_eq!(p3["type"], "Message");
     assert_eq!(p3["role"], "assistant");
     assert_eq!(p3["content"], "I see a cat outdoors.");
+}
+
+// ─── forward-compat-evolution fixtures ──────────────────────────────────────
+
+#[tokio::test]
+async fn golden_forward_compat_evolution_mixed_versions() {
+    let fixtures = load_fixture("forward-compat-evolution.json");
+    assert_eq!(
+        fixtures.len(),
+        5,
+        "forward-compat-evolution fixture should have 5 events"
+    );
+
+    let (_dir, journal) = setup();
+    ingest(&journal, &fixtures).await;
+
+    let events = journal
+        .read(
+            EventQuery::new()
+                .session(SessionId::from_string("GOLDEN-FORWARD-COMPAT-EVOLUTION"))
+                .branch(BranchId::from_string("main")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 5, "all 5 events should survive round-trip");
+
+    // v2 unknown "AgentMetrics" becomes Custom
+    let p2 = payload_json(&events[2]);
+    assert_eq!(p2["type"], "Custom");
+    assert_eq!(p2["event_type"], "AgentMetrics");
+    assert_eq!(p2["data"]["metrics"]["tokens_used"], 1500);
+    assert_eq!(p2["data"]["metrics"]["latency_ms"], 230);
+    assert_eq!(p2["data"]["sampling_rate"], 0.5);
+
+    // v2 unknown "CodeReview" becomes Custom
+    let p3 = payload_json(&events[3]);
+    assert_eq!(p3["type"], "Custom");
+    assert_eq!(p3["event_type"], "CodeReview");
+    assert_eq!(p3["data"]["file"], "src/main.rs");
+    assert_eq!(p3["data"]["diff_hash"], "sha256:abcdef1234567890");
+    assert_eq!(p3["data"]["verdict"], "approve");
+}
+
+#[tokio::test]
+async fn golden_forward_compat_evolution_preserves_schema_version() {
+    let fixtures = load_fixture("forward-compat-evolution.json");
+    let (_dir, journal) = setup();
+    ingest(&journal, &fixtures).await;
+
+    let events = journal
+        .read(
+            EventQuery::new()
+                .session(SessionId::from_string("GOLDEN-FORWARD-COMPAT-EVOLUTION"))
+                .branch(BranchId::from_string("main")),
+        )
+        .await
+        .unwrap();
+
+    // v1 events
+    assert_eq!(events[0].schema_version, 1, "SessionCreated should be v1");
+    assert_eq!(events[1].schema_version, 1, "Message should be v1");
+    // v2 events
+    assert_eq!(events[2].schema_version, 2, "AgentMetrics should be v2");
+    assert_eq!(events[3].schema_version, 2, "CodeReview should be v2");
+    // v1 event after unknowns
+    assert_eq!(events[4].schema_version, 1, "trailing Message should be v1");
+}
+
+#[tokio::test]
+async fn golden_forward_compat_evolution_known_events_unaffected() {
+    let fixtures = load_fixture("forward-compat-evolution.json");
+    let (_dir, journal) = setup();
+    ingest(&journal, &fixtures).await;
+
+    let events = journal
+        .read(
+            EventQuery::new()
+                .session(SessionId::from_string("GOLDEN-FORWARD-COMPAT-EVOLUTION"))
+                .branch(BranchId::from_string("main")),
+        )
+        .await
+        .unwrap();
+
+    // Known v1 events at indices 0, 1, 4 should be unaffected by v2 unknowns
+    let p0 = payload_json(&events[0]);
+    assert_eq!(p0["type"], "SessionCreated");
+    assert_eq!(p0["name"], "forward-compat-evolution");
+
+    let p1 = payload_json(&events[1]);
+    assert_eq!(p1["type"], "Message");
+    assert_eq!(p1["role"], "user");
+    assert_eq!(p1["content"], "Run the metrics pipeline");
+
+    let p4 = payload_json(&events[4]);
+    assert_eq!(p4["type"], "Message");
+    assert_eq!(p4["role"], "assistant");
+    assert_eq!(p4["content"], "Metrics collected and code reviewed.");
 }
