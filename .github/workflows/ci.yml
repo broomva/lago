@@ -82,4 +82,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Checkout sibling dependencies
         run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - run: cargo deny check --all-features

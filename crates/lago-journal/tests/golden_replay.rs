@@ -15,7 +15,7 @@ use lago_core::{EventQuery, Journal};
 use lago_journal::RedbJournal;
 use tempfile::TempDir;
 
-const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../conformance/fixtures");
+const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
 fn load_fixture(name: &str) -> Vec<EventEnvelope> {
     let path = format!("{FIXTURES_DIR}/{name}");

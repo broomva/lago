@@ -1,0 +1,77 @@
+[
+  {
+    "event_id": "EVT-FCE-001",
+    "session_id": "GOLDEN-FORWARD-COMPAT-EVOLUTION",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000000000000,
+    "payload": {
+      "type": "SessionCreated",
+      "name": "forward-compat-evolution",
+      "config": {}
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-FCE-002",
+    "session_id": "GOLDEN-FORWARD-COMPAT-EVOLUTION",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000001000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Run the metrics pipeline"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-FCE-003",
+    "session_id": "GOLDEN-FORWARD-COMPAT-EVOLUTION",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000002000000,
+    "payload": {
+      "type": "AgentMetrics",
+      "metrics": {
+        "tokens_used": 1500,
+        "latency_ms": 230,
+        "cache_hit_rate": 0.82
+      },
+      "sampling_rate": 0.5
+    },
+    "metadata": {},
+    "schema_version": 2
+  },
+  {
+    "event_id": "EVT-FCE-004",
+    "session_id": "GOLDEN-FORWARD-COMPAT-EVOLUTION",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000003000000,
+    "payload": {
+      "type": "CodeReview",
+      "file": "src/main.rs",
+      "diff_hash": "sha256:abcdef1234567890",
+      "verdict": "approve"
+    },
+    "metadata": {},
+    "schema_version": 2
+  },
+  {
+    "event_id": "EVT-FCE-005",
+    "session_id": "GOLDEN-FORWARD-COMPAT-EVOLUTION",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000004000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "Metrics collected and code reviewed."
+    },
+    "metadata": {},
+    "schema_version": 1
+  }
+]

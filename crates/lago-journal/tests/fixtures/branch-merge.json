@@ -1,0 +1,115 @@
+[
+  {
+    "event_id": "EVT-BM-001",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000000000000,
+    "payload": {
+      "type": "SessionCreated",
+      "name": "branch-merge",
+      "config": {}
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-002",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000001000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Start the experiment"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-003",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000002000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "Ready to begin. I will create a branch for the experiment."
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-004",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000003000000,
+    "payload": {
+      "type": "BranchCreated",
+      "new_branch_id": "experiment",
+      "fork_point_seq": 3,
+      "name": "experiment"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-005",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "experiment",
+    "seq": 0,
+    "timestamp": 1700000004000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Run the experiment on this branch"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-006",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "experiment",
+    "seq": 0,
+    "timestamp": 1700000005000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "Experiment complete. Results are positive."
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-007",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000006000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Continue work on main while experiment runs"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BM-008",
+    "session_id": "GOLDEN-BRANCH-MERGE",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000007000000,
+    "payload": {
+      "type": "BranchMerged",
+      "source_branch_id": "experiment",
+      "merge_seq": 2
+    },
+    "metadata": {},
+    "schema_version": 1
+  }
+]
