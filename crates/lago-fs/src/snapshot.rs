@@ -18,7 +18,23 @@ pub fn snapshot(
 ) -> LagoResult<Manifest> {
     let mut new_manifest = Manifest::new();
 
-    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+    // Prune entire directory trees early so WalkDir never descends into them.
+    let walker = WalkDir::new(root).into_iter().filter_entry(|entry| {
+        let name = entry.file_name().to_string_lossy();
+        !matches!(
+            name.as_ref(),
+            ".git"
+                | ".lago"
+                | ".lake"
+                | ".arcan"
+                | ".target"
+                | "target"
+                | "node_modules"
+                | ".DS_Store"
+        )
+    });
+
+    for entry in walker.filter_map(Result::ok) {
         let path = entry.path();
 
         // Ignore symlinks and directories in this pass
@@ -28,14 +44,6 @@ pub fn snapshot(
 
         let rel_path = path.strip_prefix(root).unwrap_or(path);
         let rel_str = rel_path.to_string_lossy().to_string();
-
-        // Ignore common hidden/system directories that shouldn't be in the virtual manifest
-        if rel_str.starts_with(".git/")
-            || rel_str.starts_with(".lago/")
-            || rel_str.starts_with(".lake/")
-        {
-            continue;
-        }
 
         let virtual_path = format!("/{}", rel_str);
 
