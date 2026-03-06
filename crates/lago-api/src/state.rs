@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use lago_core::Journal;
 use lago_store::BlobStore;
@@ -14,4 +15,6 @@ pub struct AppState {
     pub blob_store: Arc<BlobStore>,
     /// Root path for filesystem data.
     pub data_dir: PathBuf,
+    /// Daemon startup time for uptime reporting.
+    pub started_at: Instant,
 }

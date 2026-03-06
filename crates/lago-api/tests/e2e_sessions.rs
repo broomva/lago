@@ -22,6 +22,7 @@ fn test_state() -> (tempfile::TempDir, Arc<AppState>) {
         journal: Arc::new(journal) as Arc<dyn lago_core::Journal>,
         blob_store: Arc::new(blob_store),
         data_dir: dir.path().to_path_buf(),
+        started_at: std::time::Instant::now(),
     });
     (dir, state)
 }

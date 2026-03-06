@@ -65,6 +65,7 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
         journal: journal.clone() as Arc<dyn lago_core::Journal>,
         blob_store: blob_store.clone(),
         data_dir: config.data_dir.clone(),
+        started_at: std::time::Instant::now(),
     };
     let app = lago_api::build_router(Arc::new(state));
     let listener = tokio::net::TcpListener::bind(http_addr).await?;

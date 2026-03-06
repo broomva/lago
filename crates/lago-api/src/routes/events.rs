@@ -9,7 +9,7 @@ use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::StreamExt;
 use serde::Deserialize;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use lago_core::id::{BranchId, SeqNo, SessionId};
 
@@ -78,6 +78,7 @@ fn frame_to_sse_event(frame: SseFrame) -> SseEvent {
 /// Streams events for a session in the requested format using Server-Sent Events.
 /// Supports reconnection via the `Last-Event-ID` header and keep-alive pings
 /// every 15 seconds.
+#[instrument(skip(state, query, headers), fields(lago.stream_id = %session_id))]
 pub async fn stream_events(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,

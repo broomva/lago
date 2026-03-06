@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use lago_core::{BlobHash, LagoError, LagoResult};
-use tracing::{debug, trace};
+use tracing::{debug, instrument, trace};
 
 use crate::compress;
 use crate::hash;
@@ -31,6 +31,7 @@ impl BlobStore {
     ///
     /// If a blob with the same hash already exists on disk, the write is
     /// skipped (content-addressed deduplication).
+    #[instrument(skip(self, data), fields(lago.blob_size = data.len()))]
     pub fn put(&self, data: &[u8]) -> LagoResult<BlobHash> {
         let hash = hash::hash_bytes(data);
 
@@ -58,6 +59,7 @@ impl BlobStore {
     }
 
     /// Retrieve the decompressed contents of a blob by its hash.
+    #[instrument(skip(self), fields(lago.blob_hash = %hash))]
     pub fn get(&self, hash: &BlobHash) -> LagoResult<Vec<u8>> {
         let blob_path = self.blob_path(hash);
 
@@ -78,6 +80,7 @@ impl BlobStore {
     }
 
     /// Delete a blob from disk. Returns an error if the blob does not exist.
+    #[instrument(skip(self), fields(lago.blob_hash = %hash))]
     pub fn delete(&self, hash: &BlobHash) -> LagoResult<()> {
         let blob_path = self.blob_path(hash);
 

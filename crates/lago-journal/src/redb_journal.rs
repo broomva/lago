@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use redb::{Database, ReadableTable};
 use tokio::sync::broadcast;
-use tracing::debug;
+use tracing::{Instrument, debug};
 
 use lago_core::{
     BranchId, EventEnvelope, EventId, EventQuery, EventStream, Journal, LagoError, LagoResult,
@@ -422,44 +422,61 @@ impl Journal for RedbJournal {
         &self,
         event: EventEnvelope,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
+        let span = tracing::info_span!(
+            "lago.journal.append",
+            lago.stream_id = %event.session_id,
+            lago.event_count = 1,
+        );
         let db = Arc::clone(&self.db);
         let notify_tx = self.notify_tx.clone();
-        Box::pin(async move {
-            let events = vec![event];
-            let (last_seq, notifications) =
-                tokio::task::spawn_blocking(move || Self::append_batch_blocking(&db, events))
-                    .await
-                    .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))??;
+        Box::pin(
+            async move {
+                let events = vec![event];
+                let (last_seq, notifications) =
+                    tokio::task::spawn_blocking(move || Self::append_batch_blocking(&db, events))
+                        .await
+                        .map_err(|e| {
+                            LagoError::Journal(format!("spawn_blocking join error: {e}"))
+                        })??;
 
-            for notification in notifications {
-                let _ = notify_tx.send(notification);
+                for notification in notifications {
+                    let _ = notify_tx.send(notification);
+                }
+                debug!(seq = last_seq, "appended event");
+                Ok(last_seq)
             }
-            debug!(seq = last_seq, "appended event");
-            Ok(last_seq)
-        })
+            .instrument(span),
+        )
     }
 
     fn append_batch(
         &self,
         events: Vec<EventEnvelope>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
+        let span =
+            tracing::info_span!("lago.journal.append_batch", lago.event_count = events.len(),);
         let db = Arc::clone(&self.db);
         let notify_tx = self.notify_tx.clone();
-        Box::pin(async move {
-            if events.is_empty() {
-                return Ok(0);
-            }
-            let (last_seq, notifications) =
-                tokio::task::spawn_blocking(move || Self::append_batch_blocking(&db, events))
-                    .await
-                    .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))??;
+        Box::pin(
+            async move {
+                if events.is_empty() {
+                    return Ok(0);
+                }
+                let (last_seq, notifications) =
+                    tokio::task::spawn_blocking(move || Self::append_batch_blocking(&db, events))
+                        .await
+                        .map_err(|e| {
+                            LagoError::Journal(format!("spawn_blocking join error: {e}"))
+                        })??;
 
-            for notification in notifications {
-                let _ = notify_tx.send(notification);
+                for notification in notifications {
+                    let _ = notify_tx.send(notification);
+                }
+                debug!(seq = last_seq, "appended batch");
+                Ok(last_seq)
             }
-            debug!(seq = last_seq, "appended batch");
-            Ok(last_seq)
-        })
+            .instrument(span),
+        )
     }
 
     fn read(
@@ -468,12 +485,16 @@ impl Journal for RedbJournal {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = LagoResult<Vec<EventEnvelope>>> + Send + '_>,
     > {
+        let span = tracing::info_span!("lago.journal.read");
         let db = Arc::clone(&self.db);
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || Self::read_blocking(&db, query))
-                .await
-                .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))?
-        })
+        Box::pin(
+            async move {
+                tokio::task::spawn_blocking(move || Self::read_blocking(&db, query))
+                    .await
+                    .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))?
+            }
+            .instrument(span),
+        )
     }
 
     fn get_event(
@@ -496,14 +517,21 @@ impl Journal for RedbJournal {
         session_id: &SessionId,
         branch_id: &BranchId,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
+        let span = tracing::info_span!(
+            "lago.journal.head_seq",
+            lago.stream_id = %session_id,
+        );
         let db = Arc::clone(&self.db);
         let sid = session_id.as_str().to_string();
         let bid = branch_id.as_str().to_string();
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || Self::head_seq_blocking(&db, &sid, &bid))
-                .await
-                .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))?
-        })
+        Box::pin(
+            async move {
+                tokio::task::spawn_blocking(move || Self::head_seq_blocking(&db, &sid, &bid))
+                    .await
+                    .map_err(|e| LagoError::Journal(format!("spawn_blocking join error: {e}")))?
+            }
+            .instrument(span),
+        )
     }
 
     fn stream(
@@ -513,12 +541,19 @@ impl Journal for RedbJournal {
         after_seq: SeqNo,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<EventStream>> + Send + '_>>
     {
+        let span = tracing::info_span!(
+            "lago.journal.stream",
+            lago.stream_id = %session_id,
+        );
         let db = Arc::clone(&self.db);
         let rx = self.notify_tx.subscribe();
-        Box::pin(async move {
-            let tail = EventTailStream::new(db, rx, session_id, branch_id, after_seq);
-            Ok(Box::pin(tail) as EventStream)
-        })
+        Box::pin(
+            async move {
+                let tail = EventTailStream::new(db, rx, session_id, branch_id, after_seq);
+                Ok(Box::pin(tail) as EventStream)
+            }
+            .instrument(span),
+        )
     }
 
     fn put_session(

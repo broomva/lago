@@ -64,6 +64,9 @@ toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
+# Observability
+vigil = { path = "../vigil" }
+
 # Agent OS protocol (canonical contract)
 aios-protocol = { version = "0.1.0", path = "../aiOS/crates/aios-protocol" }
 

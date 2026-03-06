@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use lagod::config::DaemonConfig;
+use vigil::VigConfig;
 
 // --- CLI definition
 
@@ -33,13 +34,9 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Initialize telemetry via Vigil (structured logging + optional OTel export)
+    let _guard = vigil::init_telemetry(VigConfig::for_service("lago").with_env_overrides())
+        .expect("failed to initialize telemetry");
 
     let args = Args::parse();
 
