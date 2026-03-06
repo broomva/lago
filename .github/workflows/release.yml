@@ -15,7 +15,7 @@ jobs:
     outputs:
       changelog: ${{ steps.cliff.outputs.content }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Generate changelog
@@ -51,7 +51,7 @@ jobs:
             asset_name: lago-windows-amd64.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
