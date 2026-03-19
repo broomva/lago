@@ -1,7 +1,7 @@
 # Multi-stage build for lagod
 # Clones sibling dependencies (aiOS, vigil) and builds the workspace
 
-FROM rust:1.85-bookworm AS builder
+FROM rust:1-bookworm AS builder
 
 # Install protoc for gRPC compilation
 RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
