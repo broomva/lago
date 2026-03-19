@@ -17,9 +17,20 @@ Rust 2024 | redb v2 | tonic+prost (gRPC) | axum (HTTP/SSE) | ULID | SHA-256+zstd
 - `lago-store` - Content-addressed blob storage (SHA-256 + zstd)
 - `lago-fs` - Filesystem manifest, branching, diffs
 - `lago-ingest` - gRPC streaming ingest (protobuf on wire, JSON in storage)
-- `lago-api` - REST + SSE (OpenAI/Anthropic/Vercel/Lago format adapters)
+- `lago-api` - REST + SSE (OpenAI/Anthropic/Vercel/Lago format adapters) + auth-protected `/v1/memory/*` routes
 - `lago-policy` - RBAC + rule-based tool governance (TOML config)
-- `lago-cli` / `lagod` - CLI and daemon binaries
+- `lago-knowledge` - Knowledge index engine (frontmatter parsing, wikilink extraction, scored search, BFS graph traversal)
+- `lago-auth` - JWT auth middleware (shared-secret validation, user→session mapping)
+- `lago-cli` / `lagod` - CLI and daemon binaries. CLI includes `lago memory` subcommands.
+
+## Context Engine (Memory API)
+
+Lago serves as the persistence substrate for user memory vaults via `/v1/memory/*` routes:
+
+- **Auth**: JWT bearer tokens signed with `AUTH_SECRET` (shared with broomva.tech). Configure via `LAGO_JWT_SECRET` env var or `[auth] jwt_secret` in `lago.toml`.
+- **Per-user sessions**: Each authenticated user gets a Lago session named `vault:{user_id}`.
+- **Knowledge index**: `lago-knowledge` parses YAML frontmatter, extracts `[[wikilinks]]`, builds scored search with name/body/tag boosting, and provides BFS graph traversal.
+- **CLI**: `lago memory {status,ls,search,read,store,ingest,delete}` — token resolved from `BROOMVA_API_TOKEN` env or `~/.broomva/config.json`.
 
 ## Critical Patterns
 - Journal trait uses `BoxFuture` for dyn-compatibility (`Arc<dyn Journal>`)
