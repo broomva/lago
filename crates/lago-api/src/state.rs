@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use lago_auth::AuthLayer;
 use lago_core::Journal;
 use lago_store::BlobStore;
 
@@ -17,4 +18,6 @@ pub struct AppState {
     pub data_dir: PathBuf,
     /// Daemon startup time for uptime reporting.
     pub started_at: Instant,
+    /// Auth layer for JWT-protected routes (None = auth disabled).
+    pub auth: Option<Arc<AuthLayer>>,
 }

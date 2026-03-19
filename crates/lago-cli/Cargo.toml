@@ -24,6 +24,7 @@ lago-api.workspace = true
 lago-policy.workspace = true
 lagod = { version = "0.2.0", path = "../lagod" }
 reqwest = { version = "0.12", features = ["json"] }
+urlencoding = "2"
 clap.workspace = true
 tokio.workspace = true
 toml.workspace = true

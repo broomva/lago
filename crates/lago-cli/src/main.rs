@@ -90,6 +90,12 @@ enum Commands {
         #[arg(long, default_value = "main")]
         branch: String,
     },
+
+    /// Memory vault operations (auth-protected)
+    Memory {
+        #[command(subcommand)]
+        action: MemoryAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -133,6 +139,77 @@ enum BranchAction {
     },
 }
 
+#[derive(Subcommand)]
+enum MemoryAction {
+    /// Show vault status (file count, total size)
+    Status,
+
+    /// List all .md files in the vault
+    Ls {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Search vault notes
+    Search {
+        /// Search query
+        query: String,
+
+        /// Maximum results to return
+        #[arg(long, default_value_t = 10)]
+        max_results: usize,
+
+        /// Follow wikilinks from top results
+        #[arg(long)]
+        follow_links: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Read a specific note by name or path
+    Read {
+        /// Note name or relative path
+        name: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Store a local .md file in the vault
+    Store {
+        /// Path to the local .md file
+        file: PathBuf,
+
+        /// Remote path override (default: filename)
+        #[arg(long)]
+        r#as: Option<String>,
+    },
+
+    /// Bulk ingest all .md files from a directory
+    Ingest {
+        /// Directory to ingest from
+        directory: PathBuf,
+
+        /// Preview without writing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Glob pattern for files to ingest
+        #[arg(long, default_value = "**/*.md")]
+        pattern: String,
+    },
+
+    /// Delete a note from the vault
+    Delete {
+        /// File path in the vault
+        path: String,
+    },
+}
+
 // --- Entry point
 
 #[tokio::main]
@@ -153,6 +230,36 @@ async fn main() {
         eprintln!("error: {e}");
         std::process::exit(1);
     }
+}
+
+/// Resolve auth token from: --token flag → BROOMVA_API_TOKEN env → ~/.broomva/config.json
+fn resolve_token() -> Option<String> {
+    // 1. BROOMVA_API_TOKEN env var
+    if let Ok(t) = std::env::var("BROOMVA_API_TOKEN") {
+        if !t.is_empty() {
+            return Some(t);
+        }
+    }
+
+    // 2. ~/.broomva/config.json
+    if let Some(home) = dirs_path() {
+        let config_path = home.join(".broomva").join("config.json");
+        if let Ok(content) = std::fs::read_to_string(config_path) {
+            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(token) = config.get("token").and_then(|t| t.as_str()) {
+                    if !token.is_empty() {
+                        return Some(token.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn dirs_path() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(PathBuf::from)
 }
 
 async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -235,7 +342,282 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
         }
+
+        Commands::Memory { action } => {
+            let base_url = format!("http://127.0.0.1:{api_port}");
+            let token = resolve_token();
+            let http = reqwest::Client::new();
+
+            match action {
+                MemoryAction::Status => {
+                    let res = memory_request(
+                        &http,
+                        &base_url,
+                        &token,
+                        "GET",
+                        "/v1/memory/manifest",
+                        None,
+                    )
+                    .await?;
+                    let manifest: serde_json::Value = res.json().await?;
+                    let entries = manifest["entries"].as_array().map(|a| a.len()).unwrap_or(0);
+                    let total_bytes: u64 = manifest["entries"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(|e| e["size_bytes"].as_u64()).sum())
+                        .unwrap_or(0);
+                    println!("Vault status:");
+                    println!("  Files: {entries}");
+                    println!("  Total size: {} bytes", total_bytes);
+                }
+
+                MemoryAction::Ls { json } => {
+                    let res = memory_request(
+                        &http,
+                        &base_url,
+                        &token,
+                        "GET",
+                        "/v1/memory/manifest",
+                        None,
+                    )
+                    .await?;
+                    let manifest: serde_json::Value = res.json().await?;
+
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&manifest)?);
+                    } else if let Some(entries) = manifest["entries"].as_array() {
+                        for entry in entries {
+                            let path = entry["path"].as_str().unwrap_or("?");
+                            let size = entry["size_bytes"].as_u64().unwrap_or(0);
+                            println!("{path}  ({size} bytes)");
+                        }
+                    }
+                }
+
+                MemoryAction::Search {
+                    query,
+                    max_results,
+                    follow_links,
+                    json,
+                } => {
+                    let body = serde_json::json!({
+                        "query": query,
+                        "max_results": max_results,
+                        "follow_links": follow_links,
+                    });
+                    let res = memory_request(
+                        &http,
+                        &base_url,
+                        &token,
+                        "POST",
+                        "/v1/memory/search",
+                        Some(body),
+                    )
+                    .await?;
+                    let data: serde_json::Value = res.json().await?;
+
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&data)?);
+                    } else if let Some(results) = data["results"].as_array() {
+                        if results.is_empty() {
+                            println!("No results found.");
+                        } else {
+                            for (i, r) in results.iter().enumerate() {
+                                let name = r["name"].as_str().unwrap_or("?");
+                                let path = r["path"].as_str().unwrap_or("?");
+                                let score = r["score"].as_f64().unwrap_or(0.0);
+                                println!("{}. {} ({}) [score: {:.1}]", i + 1, name, path, score);
+                                if let Some(excerpts) = r["excerpts"].as_array() {
+                                    for excerpt in excerpts.iter().take(2) {
+                                        if let Some(s) = excerpt.as_str() {
+                                            println!("   > {s}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                MemoryAction::Read { name, json } => {
+                    let encoded = urlencoding::encode(&name);
+                    let res = memory_request(
+                        &http,
+                        &base_url,
+                        &token,
+                        "GET",
+                        &format!("/v1/memory/note/{encoded}"),
+                        None,
+                    )
+                    .await?;
+                    let data: serde_json::Value = res.json().await?;
+
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&data)?);
+                    } else {
+                        let note_name = data["name"].as_str().unwrap_or("?");
+                        let body = data["body"].as_str().unwrap_or("");
+                        println!("# {note_name}\n");
+                        println!("{body}");
+                    }
+                }
+
+                MemoryAction::Store { file, r#as } => {
+                    let content = std::fs::read(&file)?;
+                    let remote_path = r#as.unwrap_or_else(|| {
+                        format!(
+                            "/{}",
+                            file.file_name().unwrap_or_default().to_string_lossy()
+                        )
+                    });
+                    let encoded = urlencoding::encode(&remote_path);
+                    let res = http
+                        .put(format!("{base_url}/v1/memory/files/{encoded}"))
+                        .headers(auth_headers(&token))
+                        .body(content)
+                        .send()
+                        .await?;
+
+                    if res.status().is_success() {
+                        let data: serde_json::Value = res.json().await?;
+                        println!(
+                            "Stored: {} ({} bytes)",
+                            data["path"].as_str().unwrap_or("?"),
+                            data["size_bytes"].as_u64().unwrap_or(0)
+                        );
+                    } else {
+                        let status = res.status();
+                        let body = res.text().await?;
+                        eprintln!("Error {status}: {body}");
+                    }
+                }
+
+                MemoryAction::Ingest {
+                    directory,
+                    dry_run,
+                    pattern: _,
+                } => {
+                    let files = collect_md_files(&directory);
+                    println!("Found {} .md files in {}", files.len(), directory.display());
+
+                    for file in &files {
+                        let rel = file.strip_prefix(&directory).unwrap_or(file);
+                        let remote_path = format!("/{}", rel.to_string_lossy());
+
+                        if dry_run {
+                            println!("  [dry-run] {remote_path}");
+                        } else {
+                            let content = std::fs::read(file)?;
+                            let encoded = urlencoding::encode(&remote_path);
+                            let res = http
+                                .put(format!("{base_url}/v1/memory/files/{encoded}"))
+                                .headers(auth_headers(&token))
+                                .body(content)
+                                .send()
+                                .await?;
+
+                            if res.status().is_success() {
+                                println!("  + {remote_path}");
+                            } else {
+                                eprintln!("  ! {remote_path} ({})", res.status());
+                            }
+                        }
+                    }
+
+                    if !dry_run {
+                        println!("Ingested {} files.", files.len());
+                    }
+                }
+
+                MemoryAction::Delete { path } => {
+                    let encoded = urlencoding::encode(&path);
+                    let res = memory_request(
+                        &http,
+                        &base_url,
+                        &token,
+                        "DELETE",
+                        &format!("/v1/memory/files/{encoded}"),
+                        None,
+                    )
+                    .await?;
+
+                    if res.status().is_success() {
+                        println!("Deleted: {path}");
+                    } else {
+                        let status = res.status();
+                        let body = res.text().await?;
+                        eprintln!("Error {status}: {body}");
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
+}
+
+// --- Memory CLI helpers
+
+fn auth_headers(token: &Option<String>) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(t) = token {
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {t}")) {
+            headers.insert(reqwest::header::AUTHORIZATION, val);
+        }
+    }
+    headers
+}
+
+async fn memory_request(
+    http: &reqwest::Client,
+    base_url: &str,
+    token: &Option<String>,
+    method: &str,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    let url = format!("{base_url}{path}");
+    let mut req = match method {
+        "POST" => http.post(&url),
+        "PUT" => http.put(&url),
+        "DELETE" => http.delete(&url),
+        _ => http.get(&url),
+    };
+
+    req = req.headers(auth_headers(token));
+
+    if let Some(body) = body {
+        req = req.json(&body);
+    }
+
+    let res = req.send().await?;
+
+    if !res.status().is_success() && !res.status().is_redirection() {
+        let status = res.status();
+        if status == reqwest::StatusCode::NO_CONTENT {
+            return Ok(res);
+        }
+        let body = res.text().await?;
+        return Err(format!("HTTP {status}: {body}").into());
+    }
+
+    Ok(res)
+}
+
+/// Recursively collect .md files from a directory.
+fn collect_md_files(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if !name.starts_with('.') && name != "node_modules" {
+                    files.extend(collect_md_files(&path));
+                }
+            } else if path.extension().is_some_and(|e| e == "md") {
+                files.push(path);
+            }
+        }
+    }
+    files
 }

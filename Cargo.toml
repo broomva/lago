@@ -8,6 +8,8 @@ members = [
     "crates/lago-ingest",
     "crates/lago-api",
     "crates/lago-policy",
+    "crates/lago-knowledge",
+    "crates/lago-auth",
     "crates/lago-aios-eventstore-adapter",
     "crates/lago-cli",
     "crates/lagod",
@@ -56,6 +58,11 @@ axum = { version = "0.8", features = ["macros"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
+# Serialization
+serde_yaml = "0.9"
+regex = "1"
+jsonwebtoken = "9"
+
 # CLI
 clap = { version = "4", features = ["derive"] }
 toml = "0.9"
@@ -78,3 +85,5 @@ lago-fs = { version = "0.2.1", path = "crates/lago-fs" }
 lago-ingest = { version = "0.2.1", path = "crates/lago-ingest" }
 lago-api = { version = "0.2.1", path = "crates/lago-api" }
 lago-policy = { version = "0.2.1", path = "crates/lago-policy" }
+lago-knowledge = { version = "0.2.1", path = "crates/lago-knowledge" }
+lago-auth = { version = "0.2.1", path = "crates/lago-auth" }

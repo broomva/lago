@@ -26,6 +26,7 @@ fn test_state() -> (tempfile::TempDir, Arc<AppState>) {
         blob_store: Arc::new(blob_store),
         data_dir: dir.path().to_path_buf(),
         started_at: std::time::Instant::now(),
+        auth: None,
     });
     (dir, state)
 }

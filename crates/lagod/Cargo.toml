@@ -22,6 +22,7 @@ lago-fs.workspace = true
 lago-ingest.workspace = true
 lago-api.workspace = true
 lago-policy.workspace = true
+lago-auth.workspace = true
 clap.workspace = true
 tokio.workspace = true
 tonic.workspace = true

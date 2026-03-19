@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::middleware::from_fn_with_state;
 use axum::routing::{get, post};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -11,6 +12,7 @@ use crate::state::AppState;
 /// Build the complete axum Router with all routes nested under `/v1`.
 ///
 /// Includes CORS middleware (permissive for development) and request tracing.
+/// When auth is configured, `/v1/memory/*` routes are protected by JWT middleware.
 pub fn build_router(state: Arc<AppState>) -> Router {
     let v1 = Router::new()
         // --- Sessions: POST and GET on the same path must be combined
@@ -48,15 +50,34 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(routes::blobs::get_blob).put(routes::blobs::put_blob),
         );
 
-    Router::new()
+    let mut root = Router::new()
         .route("/health", get(routes::health::health))
-        .nest("/v1", v1)
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .nest("/v1", v1);
+
+    // --- Memory routes (auth-protected when auth is configured)
+    if let Some(auth) = &state.auth {
+        let memory = Router::new()
+            .route("/memory/manifest", get(routes::memory::get_manifest))
+            .route(
+                "/memory/files/{*path}",
+                get(routes::memory::read_file)
+                    .put(routes::memory::write_file)
+                    .delete(routes::memory::delete_file),
+            )
+            .route("/memory/search", post(routes::memory::search))
+            .route("/memory/traverse", post(routes::memory::traverse))
+            .route("/memory/note/{name}", get(routes::memory::read_note))
+            .layer(from_fn_with_state(auth.clone(), lago_auth::auth_middleware));
+
+        root = root.nest("/v1", memory);
+    }
+
+    root.layer(
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any),
+    )
+    .layer(TraceLayer::new_for_http())
+    .with_state(state)
 }

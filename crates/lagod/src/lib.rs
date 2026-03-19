@@ -59,6 +59,26 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
             .map_err(|e| format!("gRPC server error: {e}"))
     });
 
+    // --- Configure auth layer (optional)
+    let jwt_secret = config
+        .auth
+        .jwt_secret
+        .clone()
+        .or_else(|| std::env::var("LAGO_JWT_SECRET").ok());
+
+    let auth = if let Some(secret) = jwt_secret {
+        let session_map = Arc::new(lago_auth::SessionMap::new(journal.clone()));
+        session_map.rebuild().await?;
+        info!("auth middleware enabled (JWT shared secret)");
+        Some(Arc::new(lago_auth::AuthLayer {
+            jwt_secret: secret,
+            session_map,
+        }))
+    } else {
+        info!("auth middleware disabled (no JWT secret configured)");
+        None
+    };
+
     // --- Start HTTP server
     let http_addr: std::net::SocketAddr = format!("0.0.0.0:{}", config.http_port).parse()?;
     let state = lago_api::AppState {
@@ -66,6 +86,7 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
         blob_store: blob_store.clone(),
         data_dir: config.data_dir.clone(),
         started_at: std::time::Instant::now(),
+        auth,
     };
     let app = lago_api::build_router(Arc::new(state));
     let listener = tokio::net::TcpListener::bind(http_addr).await?;

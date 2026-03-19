@@ -32,6 +32,19 @@ pub struct DaemonConfig {
     /// Number of events between automatic snapshots.
     #[serde(default = "default_snapshot_interval")]
     pub snapshot_interval: u64,
+
+    /// Auth configuration for JWT-protected routes.
+    #[serde(default)]
+    pub auth: AuthConfig,
+}
+
+/// Auth configuration — when `jwt_secret` is set, `/v1/memory/*` routes
+/// require a valid JWT bearer token.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AuthConfig {
+    /// Shared JWT secret (same as broomva.tech `AUTH_SECRET`).
+    /// When `None`, auth middleware is disabled (backward-compatible).
+    pub jwt_secret: Option<String>,
 }
 
 impl DaemonConfig {
@@ -95,6 +108,7 @@ impl Default for DaemonConfig {
             wal_flush_interval_ms: default_wal_flush_interval_ms(),
             wal_flush_threshold: default_wal_flush_threshold(),
             snapshot_interval: default_snapshot_interval(),
+            auth: AuthConfig::default(),
         }
     }
 }
