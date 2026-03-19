@@ -21,7 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Checkout sibling dependencies
-        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+        run: |
+          git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+          git clone --depth 1 https://github.com/broomva/vigil.git ../vigil
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install protoc
@@ -37,7 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Checkout sibling dependencies
-        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+        run: |
+          git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+          git clone --depth 1 https://github.com/broomva/vigil.git ../vigil
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install protoc
@@ -52,7 +56,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Checkout sibling dependencies
-        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+        run: |
+          git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+          git clone --depth 1 https://github.com/broomva/vigil.git ../vigil
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -69,7 +75,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Checkout sibling dependencies
-        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+        run: |
+          git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+          git clone --depth 1 https://github.com/broomva/vigil.git ../vigil
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -81,7 +89,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Checkout sibling dependencies
-        run: git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+        run: |
+          git clone --depth 1 https://github.com/broomva/aiOS.git ../aiOS
+          git clone --depth 1 https://github.com/broomva/vigil.git ../vigil
       - uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked
