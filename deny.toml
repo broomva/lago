@@ -4,6 +4,9 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    "RUSTSEC-2026-0049",  # rustls-webpki CRL issue — low impact, patched upstream
+]
 
 [licenses]
 version = 2
