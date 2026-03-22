@@ -91,6 +91,25 @@ enum Commands {
         branch: String,
     },
 
+    /// Compact events and quarantine unreferenced blobs (garbage collection)
+    Compact {
+        /// Session ID (required)
+        #[arg(long)]
+        session: String,
+
+        /// Branch name
+        #[arg(long, default_value = "main")]
+        branch: String,
+
+        /// Custom quarantine directory (default: {data_dir}/quarantine/{timestamp}/)
+        #[arg(long)]
+        quarantine_dir: Option<PathBuf>,
+
+        /// Show what would be quarantined without actually moving files
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Memory vault operations (auth-protected)
     Memory {
         #[command(subcommand)]
@@ -338,6 +357,24 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     path,
                     session_id: session,
                     branch,
+                },
+            )
+            .await?;
+        }
+
+        Commands::Compact {
+            session,
+            branch,
+            quarantine_dir,
+            dry_run,
+        } => {
+            commands::compact::run(
+                data_dir,
+                commands::compact::CompactOptions {
+                    session_id: session,
+                    branch,
+                    quarantine_dir,
+                    dry_run,
                 },
             )
             .await?;

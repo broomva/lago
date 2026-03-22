@@ -12,6 +12,10 @@ pub enum ApiError {
     BadRequest(String),
     /// 404 Not Found with a description of what was missing.
     NotFound(String),
+    /// 403 Forbidden with a policy explanation.
+    Forbidden(String),
+    /// 409 Conflict with a description of why the operation cannot proceed.
+    Conflict(String),
     /// 500 Internal Server Error with an opaque message.
     Internal(String),
 }
@@ -86,6 +90,8 @@ impl IntoResponse for ApiError {
             },
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.clone()),
+            ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "forbidden", msg.clone()),
+            ApiError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.clone()),
             ApiError::Internal(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
@@ -177,6 +183,20 @@ mod tests {
         let e = ApiError::NotFound("missing".into());
         let resp = e.into_response();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn api_error_forbidden() {
+        let e = ApiError::Forbidden("policy denied".into());
+        let resp = e.into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn api_error_conflict() {
+        let e = ApiError::Conflict("merge conflict".into());
+        let resp = e.into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
     }
 
     #[test]

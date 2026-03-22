@@ -18,12 +18,23 @@ fn test_state() -> (tempfile::TempDir, Arc<AppState>) {
     let dir = tempfile::tempdir().unwrap();
     let journal = RedbJournal::open(dir.path().join("test.redb")).unwrap();
     let blob_store = BlobStore::open(dir.path().join("blobs")).unwrap();
+
+    // Build a Prometheus recorder for tests.
+    let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+    let prometheus_handle = recorder.handle();
+    let _ = metrics::set_global_recorder(recorder);
+
     let state = Arc::new(AppState {
         journal: Arc::new(journal) as Arc<dyn lago_core::Journal>,
         blob_store: Arc::new(blob_store),
         data_dir: dir.path().to_path_buf(),
         started_at: std::time::Instant::now(),
         auth: None,
+        policy_engine: None,
+        rbac_manager: None,
+        hook_runner: None,
+        rate_limiter: None,
+        prometheus_handle,
     });
     (dir, state)
 }

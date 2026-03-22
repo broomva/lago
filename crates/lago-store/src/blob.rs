@@ -27,6 +27,11 @@ impl BlobStore {
         Ok(Self { root })
     }
 
+    /// Return the root directory of the blob store.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Store data and return its content hash.
     ///
     /// If a blob with the same hash already exists on disk, the write is

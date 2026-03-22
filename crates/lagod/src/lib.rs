@@ -13,24 +13,28 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
     std::fs::create_dir_all(&config.data_dir)?;
 
     // --- Load policy engine
-    if config.policy_path.exists() {
+    let (policy_engine, rbac_manager, hook_runner) = if config.policy_path.exists() {
         let policy_config = lago_policy::PolicyConfig::load(&config.policy_path)?;
-        let (engine, rbac, runner) = policy_config.into_engine();
+        let (engine, rbac_mgr, runner) = policy_config.into_engine();
         info!(
             rules = engine.rules().len(),
-            roles = rbac.roles().len(),
+            roles = rbac_mgr.roles().len(),
             hooks = runner.hooks().len(),
             path = %config.policy_path.display(),
             "policy engine loaded"
         );
-        // TODO: Inject engine/rbac/runner into AppState once policy middleware is wired into HTTP routes
-        let _ = (engine, rbac, runner);
+        (
+            Some(Arc::new(engine)),
+            Some(Arc::new(tokio::sync::RwLock::new(rbac_mgr))),
+            Some(Arc::new(runner)),
+        )
     } else {
         info!(
             path = %config.policy_path.display(),
             "no policy file found, running without policy enforcement"
         );
-    }
+        (None, None, None)
+    };
 
     // --- Open the redb journal
     let db_path = config.data_dir.join("journal.redb");
@@ -79,6 +83,20 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
         None
     };
 
+    // --- Create rate limiter for public endpoints
+    let rate_limiter = Arc::new(lago_api::rate_limit::RateLimiter::new(
+        lago_api::rate_limit::RateLimitConfig::default(),
+    ));
+    info!("rate limiter enabled (1000 req/min per IP)");
+
+    // --- Install Prometheus metrics recorder
+    let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+    let prometheus_handle = recorder.handle();
+    // Install as the global metrics recorder. If another recorder is already
+    // installed (e.g. in tests), this silently fails — that's fine.
+    let _ = metrics::set_global_recorder(recorder);
+    info!("prometheus metrics recorder installed");
+
     // --- Start HTTP server
     let http_addr: std::net::SocketAddr = format!("0.0.0.0:{}", config.http_port).parse()?;
     let state = lago_api::AppState {
@@ -87,6 +105,11 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
         data_dir: config.data_dir.clone(),
         started_at: std::time::Instant::now(),
         auth,
+        policy_engine,
+        rbac_manager,
+        hook_runner,
+        rate_limiter: Some(rate_limiter),
+        prometheus_handle,
     };
     let app = lago_api::build_router(Arc::new(state));
     let listener = tokio::net::TcpListener::bind(http_addr).await?;

@@ -67,9 +67,14 @@ jsonwebtoken = "9"
 clap = { version = "4", features = ["derive"] }
 toml = "0.9"
 
+# Content detection
+infer = "0.16"
+
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 
 # Observability
 vigil = { version = "0.1.0", path = "../vigil" }
