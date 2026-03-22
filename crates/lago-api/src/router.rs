@@ -131,16 +131,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     }
 
     root.layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
-    .layer(from_fn_with_state(
-        state.clone(),
-        crate::metrics::http_metrics_middleware,
-    ))
-    .layer(
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any),
-    )
-    .layer(TraceLayer::new_for_http())
-    .with_state(state)
+        .layer(from_fn_with_state(
+            state.clone(),
+            crate::metrics::http_metrics_middleware,
+        ))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }
