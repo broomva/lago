@@ -38,7 +38,10 @@ pub fn validate_jwt(token: &str, secret: &str) -> Result<BroomvaClaims, JwtError
     let key = DecodingKey::from_secret(secret.as_bytes());
     let mut validation = Validation::new(jsonwebtoken::Algorithm::HS256);
     validation.validate_exp = true;
-    // Don't require specific audience/issuer — broomva.tech may not set them
+    validation.validate_aud = false;
+    // Don't require specific audience/issuer — broomva.tech sets
+    // aud="broomva-life-services" and iss="https://broomva.tech",
+    // but we accept tokens with or without these claims.
     validation.required_spec_claims.clear();
     validation.required_spec_claims.insert("exp".to_string());
     validation.required_spec_claims.insert("sub".to_string());
