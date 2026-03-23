@@ -480,9 +480,9 @@ mod tests {
     fn test_state(rbac: Option<RbacManager>) -> (Arc<AppState>, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path().to_path_buf();
-        let blob_store = Arc::new(lago_store::BlobStore::open(&data_dir.join("blobs")).unwrap());
+        let blob_store = Arc::new(lago_store::BlobStore::open(data_dir.join("blobs")).unwrap());
         let journal: Arc<dyn lago_core::Journal> =
-            Arc::new(lago_journal::RedbJournal::open(&data_dir.join("journal.redb")).unwrap());
+            Arc::new(lago_journal::RedbJournal::open(data_dir.join("journal.redb")).unwrap());
 
         let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
         let prometheus_handle = recorder.handle();
