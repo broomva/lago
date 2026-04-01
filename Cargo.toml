@@ -11,6 +11,7 @@ members = [
     "crates/lago-policy",
     "crates/lago-knowledge",
     "crates/lago-auth",
+    "crates/lago-compiler",
     "crates/lago-aios-eventstore-adapter",
     "crates/lago-cli",
     "crates/lagod",
@@ -94,3 +95,4 @@ lago-api = { version = "0.2.1", path = "crates/lago-api" }
 lago-policy = { version = "0.2.1", path = "crates/lago-policy" }
 lago-knowledge = { version = "0.2.1", path = "crates/lago-knowledge" }
 lago-auth = { version = "0.2.1", path = "crates/lago-auth" }
+lago-compiler = { version = "0.2.1", path = "crates/lago-compiler" }
