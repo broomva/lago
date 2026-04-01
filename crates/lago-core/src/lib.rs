@@ -1,3 +1,4 @@
+pub mod cognitive;
 pub mod error;
 pub mod event;
 pub mod hashline;
@@ -12,6 +13,7 @@ pub mod sandbox;
 pub mod session;
 pub mod tool_span;
 
+pub use cognitive::{CognitionKind, MemCube, MemoryTier};
 pub use error::{LagoError, LagoResult};
 pub use event::{EventEnvelope, EventPayload, MemoryScope};
 pub use hashline::{HashLineEdit, HashLineError, HashLineFile};
