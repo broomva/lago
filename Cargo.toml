@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/lago-core",
     "crates/lago-journal",
+    "crates/lago-lance",
     "crates/lago-store",
     "crates/lago-fs",
     "crates/lago-ingest",
@@ -85,6 +86,7 @@ aios-protocol = { version = "0.2.0", path = "../aiOS/crates/aios-protocol" }
 # Internal crates
 lago-core = { version = "0.2.1", path = "crates/lago-core" }
 lago-journal = { version = "0.2.1", path = "crates/lago-journal" }
+lago-lance = { version = "0.2.1", path = "crates/lago-lance" }
 lago-store = { version = "0.2.1", path = "crates/lago-store" }
 lago-fs = { version = "0.2.1", path = "crates/lago-fs" }
 lago-ingest = { version = "0.2.1", path = "crates/lago-ingest" }
