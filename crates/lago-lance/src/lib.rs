@@ -32,4 +32,6 @@ pub mod convert;
 pub mod journal;
 pub mod schema;
 
+pub use convert::EMBEDDING_META_KEY;
 pub use journal::LanceJournal;
+pub use schema::EMBEDDING_DIM;

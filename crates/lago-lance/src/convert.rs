@@ -4,17 +4,26 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, RecordBatch, StringArray, UInt8Array, UInt64Array,
-    builder::{StringBuilder, UInt8Builder, UInt64Builder},
+    Array, FixedSizeListArray, Float32Array, RecordBatch, StringArray, UInt8Array, UInt64Array,
+    builder::{FixedSizeListBuilder, Float32Builder, StringBuilder, UInt8Builder, UInt64Builder},
 };
 
 use lago_core::event::EventEnvelope;
 use lago_core::id::{BranchId, EventId, RunId, SessionId};
 use lago_core::session::{Session, SessionConfig};
 
-use crate::schema::{event_schema, session_schema};
+use crate::schema::{EMBEDDING_DIM, event_schema, session_schema};
+
+/// Metadata key used to transport embedding vectors through EventEnvelope.
+/// The Lance conversion layer reads this key to populate the embedding column.
+pub const EMBEDDING_META_KEY: &str = "_embedding_json";
 
 /// Convert a slice of `EventEnvelope` into an Arrow `RecordBatch`.
+///
+/// If an event has `_embedding_json` in its metadata, the value is deserialized
+/// as `Vec<f32>` and written to the nullable `embedding` column. The key is
+/// stripped from the serialized `metadata_json` so it doesn't leak to readers
+/// that don't expect it.
 pub fn events_to_batch(events: &[EventEnvelope]) -> Result<RecordBatch, arrow::error::ArrowError> {
     let schema = Arc::new(event_schema());
     let len = events.len();
@@ -29,6 +38,10 @@ pub fn events_to_batch(events: &[EventEnvelope]) -> Result<RecordBatch, arrow::e
     let mut payload_json_builder = StringBuilder::with_capacity(len, len * 256);
     let mut metadata_json_builder = StringBuilder::with_capacity(len, len * 64);
     let mut schema_version_builder = UInt8Builder::with_capacity(len);
+    let mut embedding_builder = FixedSizeListBuilder::new(
+        Float32Builder::with_capacity(len * EMBEDDING_DIM as usize),
+        EMBEDDING_DIM,
+    );
 
     for event in events {
         event_id_builder.append_value(event.event_id.as_str());
@@ -52,15 +65,47 @@ pub fn events_to_batch(events: &[EventEnvelope]) -> Result<RecordBatch, arrow::e
             serde_json::to_string(&event.payload).unwrap_or_else(|_| "{}".to_string());
         payload_json_builder.append_value(&payload_json);
 
-        if event.metadata.is_empty() {
+        // Extract embedding from metadata before serializing metadata_json.
+        let embedding: Option<Vec<f32>> = event
+            .metadata
+            .get(EMBEDDING_META_KEY)
+            .and_then(|json| serde_json::from_str(json).ok());
+
+        // Serialize metadata without the internal _embedding_json key.
+        let clean_meta: HashMap<&String, &String> = event
+            .metadata
+            .iter()
+            .filter(|(k, _)| k.as_str() != EMBEDDING_META_KEY)
+            .collect();
+
+        if clean_meta.is_empty() {
             metadata_json_builder.append_null();
         } else {
-            let meta_json =
-                serde_json::to_string(&event.metadata).unwrap_or_else(|_| "{}".to_string());
+            let meta_json = serde_json::to_string(&clean_meta).unwrap_or_else(|_| "{}".to_string());
             metadata_json_builder.append_value(&meta_json);
         }
 
         schema_version_builder.append_value(event.schema_version);
+
+        // Write embedding column.
+        // FixedSizeListBuilder requires inner values for every row (even nulls).
+        match &embedding {
+            Some(vec) if vec.len() == EMBEDDING_DIM as usize => {
+                let values = embedding_builder.values();
+                for &v in vec {
+                    values.append_value(v);
+                }
+                embedding_builder.append(true);
+            }
+            _ => {
+                // Null embedding — pad inner builder with zeros.
+                let values = embedding_builder.values();
+                for _ in 0..EMBEDDING_DIM {
+                    values.append_null();
+                }
+                embedding_builder.append(false);
+            }
+        }
     }
 
     RecordBatch::try_new(
@@ -76,6 +121,7 @@ pub fn events_to_batch(events: &[EventEnvelope]) -> Result<RecordBatch, arrow::e
             Arc::new(payload_json_builder.finish()),
             Arc::new(metadata_json_builder.finish()),
             Arc::new(schema_version_builder.finish()),
+            Arc::new(embedding_builder.finish()),
         ],
     )
 }
@@ -83,6 +129,8 @@ pub fn events_to_batch(events: &[EventEnvelope]) -> Result<RecordBatch, arrow::e
 /// Convert an Arrow `RecordBatch` back into a `Vec<EventEnvelope>`.
 ///
 /// The batch must conform to the schema returned by [`event_schema`](crate::schema::event_schema).
+/// If a row has a non-null embedding, it is serialized into the metadata under
+/// the `_embedding_json` key so callers can access it without schema awareness.
 pub fn batch_to_events(batch: &RecordBatch) -> Vec<EventEnvelope> {
     let event_ids = batch
         .column(0)
@@ -135,6 +183,11 @@ pub fn batch_to_events(batch: &RecordBatch) -> Vec<EventEnvelope> {
         .downcast_ref::<UInt8Array>()
         .expect("schema_version column must be UInt8Array");
 
+    // Embedding column is optional — older datasets may not have it.
+    let embeddings: Option<&FixedSizeListArray> = batch
+        .column_by_name("embedding")
+        .and_then(|col| col.as_any().downcast_ref::<FixedSizeListArray>());
+
     let mut results = Vec::with_capacity(batch.num_rows());
 
     for i in 0..batch.num_rows() {
@@ -153,11 +206,26 @@ pub fn batch_to_events(batch: &RecordBatch) -> Vec<EventEnvelope> {
         let payload = serde_json::from_str(payload_jsons.value(i))
             .expect("payload_json must be valid EventPayload JSON");
 
-        let metadata: HashMap<String, String> = if metadata_jsons.is_null(i) {
+        let mut metadata: HashMap<String, String> = if metadata_jsons.is_null(i) {
             HashMap::new()
         } else {
             serde_json::from_str(metadata_jsons.value(i)).unwrap_or_default()
         };
+
+        // If this row has a non-null embedding, store it in metadata.
+        if let Some(emb_col) = embeddings {
+            if !emb_col.is_null(i) {
+                let inner_array = emb_col.value(i);
+                let values = inner_array
+                    .as_any()
+                    .downcast_ref::<Float32Array>()
+                    .expect("embedding inner must be Float32Array");
+                let vec: Vec<f32> = (0..values.len()).map(|j| values.value(j)).collect();
+                if let Ok(json) = serde_json::to_string(&vec) {
+                    metadata.insert(EMBEDDING_META_KEY.to_string(), json);
+                }
+            }
+        }
 
         results.push(EventEnvelope {
             event_id: EventId::from_string(event_ids.value(i)),
@@ -270,7 +338,7 @@ mod tests {
 
         let batch = events_to_batch(&events).expect("should create batch");
         assert_eq!(batch.num_rows(), 2);
-        assert_eq!(batch.num_columns(), 10);
+        assert_eq!(batch.num_columns(), 11);
 
         let recovered = batch_to_events(&batch);
         assert_eq!(recovered.len(), 2);
@@ -354,5 +422,66 @@ mod tests {
             *batch.schema(),
             arrow_schema::Schema::new(expected.fields().to_vec())
         );
+    }
+
+    #[test]
+    fn embedding_roundtrip_through_batch() {
+        // Create an event with an embedding in metadata.
+        let mut event = make_test_envelope(1, "S1", "main");
+        let embedding: Vec<f32> = (0..1536).map(|i| i as f32 / 1536.0).collect();
+        event.metadata.insert(
+            EMBEDDING_META_KEY.to_string(),
+            serde_json::to_string(&embedding).unwrap(),
+        );
+
+        let batch = events_to_batch(&[event]).expect("should create batch with embedding");
+        assert_eq!(batch.num_columns(), 11);
+
+        let recovered = batch_to_events(&batch);
+        assert_eq!(recovered.len(), 1);
+
+        // Embedding should round-trip through metadata.
+        let recovered_json = recovered[0]
+            .metadata
+            .get(EMBEDDING_META_KEY)
+            .expect("embedding should be in metadata after round-trip");
+        let recovered_embedding: Vec<f32> = serde_json::from_str(recovered_json).unwrap();
+        assert_eq!(recovered_embedding.len(), 1536);
+        assert!((recovered_embedding[0] - 0.0).abs() < 1e-6);
+        assert!((recovered_embedding[1535] - 1535.0 / 1536.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn embedding_null_for_events_without() {
+        // Event without _embedding_json metadata.
+        let event = make_test_envelope(1, "S1", "main");
+
+        let batch = events_to_batch(&[event]).expect("should create batch");
+        let recovered = batch_to_events(&batch);
+
+        // No embedding in metadata.
+        assert!(!recovered[0].metadata.contains_key(EMBEDDING_META_KEY));
+    }
+
+    #[test]
+    fn embedding_meta_key_stripped_from_metadata_json() {
+        // Event with both regular metadata and embedding.
+        let mut event = make_test_envelope(1, "S1", "main");
+        event
+            .metadata
+            .insert("user_key".to_string(), "user_value".to_string());
+        let embedding: Vec<f32> = vec![0.0; 1536];
+        event.metadata.insert(
+            EMBEDDING_META_KEY.to_string(),
+            serde_json::to_string(&embedding).unwrap(),
+        );
+
+        let batch = events_to_batch(&[event]).unwrap();
+        let recovered = batch_to_events(&batch);
+
+        // Regular metadata preserved.
+        assert_eq!(recovered[0].metadata["user_key"], "user_value");
+        // Embedding recovered via column → metadata.
+        assert!(recovered[0].metadata.contains_key(EMBEDDING_META_KEY));
     }
 }

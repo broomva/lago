@@ -6,9 +6,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arrow_array::{RecordBatch, RecordBatchIterator};
+use arrow_array::{self, RecordBatch, RecordBatchIterator};
 use futures::StreamExt;
 use lance::dataset::{Dataset, WriteMode, WriteParams};
+use serde_json;
 use tokio::sync::Mutex;
 use tracing::debug;
 
@@ -198,6 +199,70 @@ impl LanceJournal {
 /// Escape single quotes in SQL string literals to prevent injection.
 fn escape_sql(s: &str) -> String {
     s.replace('\'', "''")
+}
+
+/// Metadata key for embedding vectors (re-exported from convert).
+pub use crate::convert::EMBEDDING_META_KEY;
+
+impl LanceJournal {
+    /// Append an event together with an embedding vector.
+    ///
+    /// The embedding is transported via the event's metadata under
+    /// [`EMBEDDING_META_KEY`] and written to the Lance `embedding` column
+    /// by the batch conversion layer.
+    pub async fn append_with_embedding(
+        &self,
+        event: EventEnvelope,
+        embedding: Vec<f32>,
+    ) -> LagoResult<SeqNo> {
+        let mut event = event;
+        event.metadata.insert(
+            EMBEDDING_META_KEY.to_string(),
+            serde_json::to_string(&embedding)
+                .map_err(|e| LagoError::Journal(format!("serialize embedding: {e}")))?,
+        );
+        // Delegate to the Journal trait append which handles seq assignment.
+        lago_core::journal::Journal::append(self, event).await
+    }
+
+    /// Nearest-neighbor vector search across events that have embeddings.
+    ///
+    /// Returns up to `k` events ordered by vector similarity (L2 distance).
+    /// Returns an empty vec if the dataset doesn't exist or has no embeddings.
+    pub async fn vector_search(
+        &self,
+        query_embedding: &[f32],
+        k: usize,
+    ) -> LagoResult<Vec<EventEnvelope>> {
+        if !self.events_exist() {
+            return Ok(Vec::new());
+        }
+
+        let ds = Dataset::open(&self.events_uri)
+            .await
+            .map_err(|e| LagoError::Journal(format!("open events for vector search: {e}")))?;
+
+        let query_array = arrow_array::Float32Array::from(query_embedding.to_vec());
+
+        let mut scanner = ds.scan();
+        let results = scanner
+            .nearest("embedding", &query_array, k)
+            .map_err(|e| LagoError::Journal(format!("vector search setup: {e}")))?
+            .nprobs(2) // search 2x probes for better recall
+            .try_into_stream()
+            .await
+            .map_err(|e| LagoError::Journal(format!("vector search stream: {e}")))?;
+
+        let mut events = Vec::new();
+        let mut stream = results;
+        while let Some(result) = stream.next().await {
+            let batch =
+                result.map_err(|e| LagoError::Journal(format!("vector search batch: {e}")))?;
+            events.extend(batch_to_events(&batch));
+        }
+
+        Ok(events)
+    }
 }
 
 impl Journal for LanceJournal {
@@ -809,5 +874,69 @@ mod tests {
 
         let limited = journal.read(EventQuery::new().limit(2)).await.unwrap();
         assert_eq!(limited.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_append_with_embedding() {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = LanceJournal::open(dir.path()).await.unwrap();
+
+        let event = make_test_event("E1", "S1", "main", 0);
+        let embedding: Vec<f32> = (0..1536).map(|i| i as f32 / 1536.0).collect();
+
+        let seq = journal
+            .append_with_embedding(event, embedding.clone())
+            .await
+            .unwrap();
+        assert_eq!(seq, 1);
+
+        // Read back and verify embedding round-trips.
+        let events = journal
+            .read(EventQuery::new().session(SessionId::from_string("S1")))
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 1);
+
+        let meta_json = events[0]
+            .metadata
+            .get(crate::convert::EMBEDDING_META_KEY)
+            .expect("embedding should be in metadata");
+        let recovered: Vec<f32> = serde_json::from_str(meta_json).unwrap();
+        assert_eq!(recovered.len(), 1536);
+        assert!((recovered[0] - embedding[0]).abs() < 1e-6);
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_empty_dataset() {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = LanceJournal::open(dir.path()).await.unwrap();
+
+        let query: Vec<f32> = vec![0.0; 1536];
+        let results = journal.vector_search(&query, 5).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_finds_similar() {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = LanceJournal::open(dir.path()).await.unwrap();
+
+        // Insert two events with different embeddings.
+        let e1 = make_test_event("E1", "S1", "main", 0);
+        let emb1: Vec<f32> = (0..1536).map(|i| i as f32 / 1536.0).collect();
+        journal
+            .append_with_embedding(e1, emb1.clone())
+            .await
+            .unwrap();
+
+        let e2 = make_test_event("E2", "S1", "main", 0);
+        let emb2: Vec<f32> = (0..1536).map(|i| (1536 - i) as f32 / 1536.0).collect();
+        journal.append_with_embedding(e2, emb2).await.unwrap();
+
+        // Search with a query close to emb1.
+        let results = journal.vector_search(&emb1, 2).await.unwrap();
+        assert_eq!(results.len(), 2);
+        // The most similar should be E1 (exact match).
+        assert_eq!(results[0].event_id.as_str(), "E1");
     }
 }

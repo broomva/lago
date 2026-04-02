@@ -1,6 +1,11 @@
 //! Arrow schemas for Lance-backed event and session storage.
 
+use std::sync::Arc;
+
 use arrow_schema::{DataType, Field, Schema};
+
+/// Embedding vector dimension (OpenAI text-embedding-3-small compatible).
+pub const EMBEDDING_DIM: i32 = 1536;
 
 /// Arrow schema for `EventEnvelope` rows in the events Lance dataset.
 pub fn event_schema() -> Schema {
@@ -15,6 +20,17 @@ pub fn event_schema() -> Schema {
         Field::new("payload_json", DataType::Utf8, false), // JSON-encoded EventPayload
         Field::new("metadata_json", DataType::Utf8, true), // JSON-encoded HashMap
         Field::new("schema_version", DataType::UInt8, false),
+        // Nullable embedding vector for semantic search (BRO-382).
+        // Only populated for memory events (offload, consolidation).
+        // Null for regular events — the agent decides what gets embedded.
+        Field::new(
+            "embedding",
+            DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                EMBEDDING_DIM,
+            ),
+            true,
+        ),
     ])
 }
 
@@ -35,7 +51,7 @@ mod tests {
     #[test]
     fn event_schema_has_expected_fields() {
         let schema = event_schema();
-        assert_eq!(schema.fields().len(), 10);
+        assert_eq!(schema.fields().len(), 11);
         assert!(schema.field_with_name("event_id").is_ok());
         assert!(schema.field_with_name("session_id").is_ok());
         assert!(schema.field_with_name("branch_id").is_ok());
@@ -46,6 +62,7 @@ mod tests {
         assert!(schema.field_with_name("payload_json").is_ok());
         assert!(schema.field_with_name("metadata_json").is_ok());
         assert!(schema.field_with_name("schema_version").is_ok());
+        assert!(schema.field_with_name("embedding").is_ok());
     }
 
     #[test]
@@ -61,7 +78,7 @@ mod tests {
     #[test]
     fn event_schema_nullable_fields() {
         let schema = event_schema();
-        // run_id, parent_id, metadata_json are nullable
+        // run_id, parent_id, metadata_json, embedding are nullable
         assert!(schema.field_with_name("run_id").unwrap().is_nullable());
         assert!(schema.field_with_name("parent_id").unwrap().is_nullable());
         assert!(
@@ -70,8 +87,22 @@ mod tests {
                 .unwrap()
                 .is_nullable()
         );
+        assert!(schema.field_with_name("embedding").unwrap().is_nullable());
         // Required fields are not nullable
         assert!(!schema.field_with_name("event_id").unwrap().is_nullable());
         assert!(!schema.field_with_name("seq").unwrap().is_nullable());
+    }
+
+    #[test]
+    fn embedding_field_is_fixed_size_list() {
+        let schema = event_schema();
+        let field = schema.field_with_name("embedding").unwrap();
+        match field.data_type() {
+            DataType::FixedSizeList(inner, dim) => {
+                assert_eq!(*dim, EMBEDDING_DIM);
+                assert_eq!(*inner.data_type(), DataType::Float32);
+            }
+            other => panic!("expected FixedSizeList, got {other:?}"),
+        }
     }
 }
