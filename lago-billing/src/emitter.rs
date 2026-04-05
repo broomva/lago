@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use lago_journal::usage::UsageDimension;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::BillingConfig;
 
