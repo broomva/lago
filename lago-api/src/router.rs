@@ -50,10 +50,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/sessions/{id}/events/read",
             get(routes::events::read_events),
         )
-        .route(
-            "/sessions/{id}/events/head",
-            get(routes::events::head_seq),
-        )
+        .route("/sessions/{id}/events/head", get(routes::events::head_seq))
         // --- Branches: POST and GET on the same path
         .route(
             "/sessions/{id}/branches",
@@ -73,10 +70,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .patch(routes::files::patch_file),
         )
         // --- Manifest
-        .route(
-            "/sessions/{id}/manifest",
-            get(routes::files::get_manifest),
-        )
+        .route("/sessions/{id}/manifest", get(routes::files::get_manifest))
         // --- Blobs: GET and PUT on the same path (authenticated)
         .route(
             "/blobs/{hash}",
@@ -93,10 +87,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(routes::snapshots::get_snapshot_manifest),
         )
         // --- Diff: compare two refs within a session
-        .route(
-            "/sessions/{id}/diff",
-            get(routes::diffs::get_diff),
-        );
+        .route("/sessions/{id}/diff", get(routes::diffs::get_diff));
 
     // Apply policy enforcement layer when policy engine is loaded
     if let Some(layer) = policy_layer {
