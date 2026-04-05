@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package lago.v1;
+
+message EventEnvelope {
+  string event_id = 1;
+  string session_id = 2;
+  string branch_id = 3;
+  optional string run_id = 4;
+  uint64 seq = 5;
+  uint64 timestamp = 6;
+  optional string parent_id = 7;
+  string payload_json = 8;
+  map<string, string> metadata = 9;
+  uint32 schema_version = 10;
+  // Reserved for future expansion
+  reserved 11 to 20;
+}
+
+message SessionConfig {
+  string name = 1;
+  string model = 2;
+  map<string, string> params = 3;
+}
+
+message Ack {
+  string event_id = 1;
+  uint64 seq = 2;
+  bool success = 3;
+  optional string error = 4;
+}
+
+message Heartbeat {
+  uint64 timestamp = 1;
+}

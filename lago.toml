@@ -1,0 +1,30 @@
+# Lago daemon configuration
+#
+# Production defaults for Railway deployment.
+# Override via CLI flags (--data-dir, --http-port, --grpc-port)
+# or environment variables (LAGO_JWT_SECRET, LAGO_DATA_DIR).
+
+# Persistent data directory (mount a Railway volume here)
+data_dir = "/data/.lago"
+
+# Policy configuration file (bundled in Docker image)
+policy_path = "/etc/lago/policy.toml"
+
+# HTTP API port (Railway routes to this automatically)
+http_port = 8080
+
+# gRPC ingest port (internal use)
+grpc_port = 50051
+
+# WAL configuration
+wal_flush_interval_ms = 100
+wal_flush_threshold = 1000
+
+# Snapshot every 10k events (compaction trigger)
+snapshot_interval = 10000
+
+# Auth — JWT secret is set via LAGO_JWT_SECRET env var.
+# When set, /v1/memory/* routes require a valid JWT bearer token.
+# The secret must match broomva.tech's AUTH_SECRET.
+[auth]
+# jwt_secret is intentionally not set here — use LAGO_JWT_SECRET env var

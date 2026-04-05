@@ -1,0 +1,14 @@
+/target
+*.swp
+*.swo
+*~
+.DS_Store
+*.db
+*.db.lock
+lago-data/
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json
+
+.env
+.entire/

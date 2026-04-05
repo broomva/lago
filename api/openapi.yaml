@@ -1,0 +1,1779 @@
+openapi: 3.1.0
+info:
+  title: Lago API
+  description: |
+    Event-sourced persistence substrate for the Life Agent OS.
+
+    Lago provides append-only event journals, content-addressed blob storage,
+    virtual filesystems with branching and snapshots, SSE streaming in multiple
+    formats, knowledge-graph search and traversal, and usage metering.
+  version: 0.10.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    name: Broomva
+    url: https://broomva.tech
+
+servers:
+  - url: http://localhost:3030
+    description: Local development
+  - url: https://lago.broomva.tech
+    description: Production
+
+tags:
+  - name: Health
+    description: Liveness, readiness, and metrics endpoints
+  - name: Sessions
+    description: Create and list event-sourced sessions
+  - name: Events
+    description: Server-Sent Event streaming with multi-format support
+  - name: Branches
+    description: Session branching and fast-forward merge
+  - name: Files
+    description: Virtual filesystem CRUD with hashline editing
+  - name: Manifest
+    description: Full file listing for a session branch
+  - name: Blobs
+    description: Content-addressed blob storage with range requests
+  - name: Snapshots
+    description: Named point-in-time tags
+  - name: Diffs
+    description: Compare two points in session history
+  - name: Usage
+    description: Usage metering and summaries
+  - name: Memory
+    description: Auth-protected knowledge vault — file CRUD, search, and graph traversal
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ── Health ────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      operationId: health
+      tags: [Health]
+      summary: Liveness check
+      description: Returns service status and subsystem health. Always responds 200.
+      security: []
+      responses:
+        "200":
+          description: Service status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /health/ready:
+    get:
+      operationId: readiness
+      tags: [Health]
+      summary: Readiness probe
+      description: Returns 200 when all subsystems are healthy, 503 otherwise.
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+
+  /metrics:
+    get:
+      operationId: prometheusMetrics
+      tags: [Health]
+      summary: Prometheus metrics
+      description: Prometheus text exposition format (0.0.4).
+      security: []
+      responses:
+        "200":
+          description: Metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # ── Sessions ──────────────────────────────────────────────────────────────
+
+  /v1/sessions:
+    post:
+      operationId: createSession
+      tags: [Sessions]
+      summary: Create a session
+      description: |
+        Creates a new event-sourced session with a "main" branch.
+        Session names with reserved prefixes (`vault:`, `agent:`, `site-assets:`, `site-content:`)
+        are validated — the identifier after the colon must be non-empty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+    get:
+      operationId: listSessions
+      tags: [Sessions]
+      summary: List sessions
+      description: |
+        Returns all sessions, optionally filtered by type prefix.
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: "Filter by session type: vault, agent, site_assets, site_content, default"
+          schema:
+            $ref: "#/components/schemas/SessionType"
+      responses:
+        "200":
+          description: Session list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [Sessions]
+      summary: Get session by ID
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Events (SSE) ──────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/events:
+    get:
+      operationId: streamEvents
+      tags: [Events]
+      summary: Stream events (SSE)
+      description: |
+        Opens a Server-Sent Events stream for the session. Events are formatted
+        according to the `format` query parameter.
+
+        **Reconnection**: Use the `Last-Event-ID` header or `after_seq` query
+        parameter to resume from a specific sequence number.
+
+        **Keep-alive**: A `ping` comment is sent every 15 seconds.
+
+        **Done frame** (Lago format): When the stream ends, a final event with
+        `event: done` and `data: {"type":"done"}` is emitted.
+
+        ### Format variants
+
+        | Format | Description |
+        |--------|-------------|
+        | `lago` (default) | Full `EventEnvelope` as JSON |
+        | `openai` | OpenAI chat completion chunk format |
+        | `anthropic` | Anthropic message streaming format |
+        | `vercel` | Vercel AI SDK streaming format |
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [lago, openai, anthropic, vercel]
+            default: lago
+          description: SSE output format
+        - name: after_seq
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Only return events after this sequence number
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch name
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: SSE reconnection — sequence number to resume from (takes precedence over after_seq)
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                description: |
+                  Server-Sent Events stream. Each event frame contains:
+                  - `id`: Sequence number (for reconnection)
+                  - `event`: Event type name (format-dependent)
+                  - `data`: JSON payload
+
+                  **Lago format example:**
+                  ```
+                  id: 42
+                  event: FileWrite
+                  data: {"event_id":"01J...","session_id":"01J...","seq":42,...}
+                  ```
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Branches ──────────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/branches:
+    post:
+      operationId: createBranch
+      tags: [Branches]
+      summary: Create a branch
+      description: |
+        Creates a new branch forked from the session's "main" branch at the
+        given sequence number (defaults to the current head).
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBranchRequest"
+      responses:
+        "201":
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    get:
+      operationId: listBranches
+      tags: [Branches]
+      summary: List branches
+      description: |
+        Lists all branches for a session, including the implicit "main" branch.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Branch list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BranchResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/sessions/{id}/branches/{branch}/merge:
+    post:
+      operationId: mergeBranch
+      tags: [Branches]
+      summary: Merge a branch (fast-forward)
+      description: |
+        Merges the named source branch into the target branch specified in the
+        request body. Only fast-forward merges are supported — returns 409 if
+        the target branch has diverged.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: branch
+          in: path
+          required: true
+          description: Source branch name to merge from
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeBranchRequest"
+      responses:
+        "200":
+          description: Merge successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeBranchResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Files ─────────────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/files/{path}:
+    get:
+      operationId: readFile
+      tags: [Files]
+      summary: Read a file
+      description: |
+        Reads a file from the session's virtual filesystem. Supports
+        `?format=hashline` to return content in hashline format with
+        `x-format: hashline` response header.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/FilePath"
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [hashline]
+          description: "Response format. `hashline` returns `N:HASH|content` per line."
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to read from
+      responses:
+        "200":
+          description: File content
+          headers:
+            x-blob-hash:
+              description: SHA-256 hash of the blob
+              schema:
+                type: string
+            x-format:
+              description: Present with value `hashline` when hashline format is used
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+                description: Hashline-formatted text (when `?format=hashline`)
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: writeFile
+      tags: [Files]
+      summary: Write a file
+      description: |
+        Writes (creates or overwrites) a file in the session's virtual filesystem.
+        The body is stored as a content-addressed blob and a `FileWrite` event
+        is appended to the journal.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/FilePath"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to write to
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: File written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileWriteResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: deleteFile
+      tags: [Files]
+      summary: Delete a file
+      description: |
+        Removes a file from the session's virtual filesystem by appending a
+        `FileDelete` event.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/FilePath"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to delete from
+      responses:
+        "204":
+          description: File deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: patchFile
+      tags: [Files]
+      summary: Patch a file (hashline edits)
+      description: |
+        Applies an array of hashline edit operations to an existing file.
+        Each edit targets a specific line by its content hash and line number,
+        enabling conflict-free collaborative editing.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/FilePath"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to patch on
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/HashLineEdit"
+      responses:
+        "200":
+          description: File patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileWriteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Manifest ──────────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/manifest:
+    get:
+      operationId: getManifest
+      tags: [Manifest]
+      summary: Get session manifest
+      description: |
+        Returns the full list of files in the session's virtual filesystem,
+        reconstructed by replaying file events from the journal. Results are
+        cached with a 60-second TTL.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to read manifest from
+      responses:
+        "200":
+          description: Manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManifestResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Blobs ─────────────────────────────────────────────────────────────────
+
+  /v1/blobs/{hash}:
+    get:
+      operationId: getBlob
+      tags: [Blobs]
+      summary: Get blob by hash
+      description: |
+        Returns raw blob data with inferred MIME content-type.
+        Supports HTTP Range requests (206 Partial Content),
+        ETag conditional requests (If-None-Match → 304 Not Modified),
+        and content-type override via `?ct=` query parameter.
+        Blobs are immutable — cached with `max-age=31536000, immutable`.
+      parameters:
+        - $ref: "#/components/parameters/BlobHash"
+        - name: ct
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Content-type override (e.g. `image/png`)
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+          description: "Byte range (e.g. `bytes=0-499`, `bytes=500-`, `bytes=-500`)"
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: "ETag for conditional request (blob hash in quotes)"
+      responses:
+        "200":
+          description: Full blob content
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Blob hash in quotes
+            Cache-Control:
+              schema:
+                type: string
+              description: "`public, max-age=31536000, immutable`"
+            Accept-Ranges:
+              schema:
+                type: string
+              description: "`bytes`"
+            x-blob-hash:
+              schema:
+                type: string
+              description: SHA-256 hash
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Partial content (range request)
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: "e.g. `bytes 0-499/10000`"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: Not modified (ETag match)
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "416":
+          description: Range not satisfiable
+
+    put:
+      operationId: putBlob
+      tags: [Blobs]
+      summary: Upload a blob
+      description: |
+        Stores a blob at the given content hash. The server computes the SHA-256
+        of the uploaded body and verifies it matches the path hash.
+        Maximum size: 512 MB. Executable/script MIME types are blocked.
+      parameters:
+        - $ref: "#/components/parameters/BlobHash"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Blob stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobPutResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/public/blobs/{hash}:
+    get:
+      operationId: getPublicBlob
+      tags: [Blobs]
+      summary: Get public blob (unauthenticated)
+      description: |
+        Same as `GET /v1/blobs/{hash}` but requires no authentication.
+        Rate-limited. CORS headers are always set for cross-origin embedding.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/BlobHash"
+        - name: ct
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Content-type override
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Blob content with CORS headers
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Partial content
+        "304":
+          description: Not modified
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "416":
+          description: Range not satisfiable
+        "429":
+          description: Rate limited
+
+  # ── Snapshots ─────────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/snapshots:
+    post:
+      operationId: createSnapshot
+      tags: [Snapshots]
+      summary: Create a named snapshot
+      description: |
+        Creates a named snapshot (tag) at the current head of the specified branch.
+        Snapshot names must be unique per branch.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSnapshotRequest"
+      responses:
+        "201":
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    get:
+      operationId: listSnapshots
+      tags: [Snapshots]
+      summary: List snapshots
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch to list snapshots for
+      responses:
+        "200":
+          description: Snapshot list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SnapshotResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/sessions/{id}/snapshots/{name}/manifest:
+    get:
+      operationId: getSnapshotManifest
+      tags: [Snapshots]
+      summary: Get manifest at snapshot point
+      description: |
+        Returns the file manifest as it existed at the point-in-time captured
+        by the named snapshot.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: name
+          in: path
+          required: true
+          description: Snapshot name
+          schema:
+            type: string
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch context
+      responses:
+        "200":
+          description: Snapshot manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotManifestResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Diffs ─────────────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/diff:
+    get:
+      operationId: getDiff
+      tags: [Diffs]
+      summary: Compare two points in history
+      description: |
+        Returns the diff between two references in a session's history.
+        References can be:
+        - A branch name (e.g. `main`, `experiment`)
+        - A snapshot name prefixed with `snap:` (e.g. `snap:v1.0`)
+        - A sequence number (e.g. `42`)
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Source reference: branch name, `snap:<name>`, or sequence number"
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Target reference (defaults to HEAD of `branch`)"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+            default: main
+          description: Branch context for sequence number references
+      responses:
+        "200":
+          description: Diff entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiffEntry"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Usage ─────────────────────────────────────────────────────────────────
+
+  /v1/sessions/{id}/usage:
+    get:
+      operationId: getSessionUsage
+      tags: [Usage]
+      summary: Get session usage
+      description: |
+        Returns per-session usage counters grouped by hourly buckets,
+        optionally filtered by time range and dimension.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: uint64
+          description: Start of time range (Unix seconds, hourly bucket)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: uint64
+          description: End of time range (Unix seconds, hourly bucket)
+        - name: dimension
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UsageDimension"
+          description: Filter by dimension
+      responses:
+        "200":
+          description: Usage records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+
+  /v1/usage/summary:
+    get:
+      operationId: getUsageSummary
+      tags: [Usage]
+      summary: Usage summary across all sessions
+      description: |
+        Returns aggregated usage across all sessions, grouped by
+        session ID and dimension.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: uint64
+          description: Start of time range (Unix seconds)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: uint64
+          description: End of time range (Unix seconds)
+      responses:
+        "200":
+          description: Usage summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageSummaryResponse"
+
+  # ── Memory (auth-protected) ───────────────────────────────────────────────
+
+  /v1/memory/manifest:
+    get:
+      operationId: getMemoryManifest
+      tags: [Memory]
+      summary: List files in user vault
+      description: |
+        Returns the full manifest for the authenticated user's vault session.
+        Requires JWT Bearer authentication.
+      responses:
+        "200":
+          description: Vault manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManifestResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/memory/files/{path}:
+    get:
+      operationId: readMemoryFile
+      tags: [Memory]
+      summary: Read a vault file
+      parameters:
+        - $ref: "#/components/parameters/FilePath"
+      responses:
+        "200":
+          description: File content
+          headers:
+            x-blob-hash:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      operationId: writeMemoryFile
+      tags: [Memory]
+      summary: Write a vault file
+      parameters:
+        - $ref: "#/components/parameters/FilePath"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: File written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    delete:
+      operationId: deleteMemoryFile
+      tags: [Memory]
+      summary: Delete a vault file
+      parameters:
+        - $ref: "#/components/parameters/FilePath"
+      responses:
+        "204":
+          description: File deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/memory/search:
+    post:
+      operationId: searchMemory
+      tags: [Memory]
+      summary: Search vault with scoring
+      description: |
+        Server-side scored search across all notes in the user's vault.
+        Optionally follows wikilinks from top results to return linked notes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/memory/traverse:
+    post:
+      operationId: traverseMemory
+      tags: [Memory]
+      summary: BFS graph traversal
+      description: |
+        Breadth-first traversal of the wikilink graph starting from a target
+        note, up to `depth` hops and `max_notes` results.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraverseRequest"
+      responses:
+        "200":
+          description: Traversal results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraverseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/memory/note/{name}:
+    get:
+      operationId: readNote
+      tags: [Memory]
+      summary: Resolve a wikilink to a full note
+      description: |
+        Resolves a note by wikilink name and returns its full content
+        including parsed frontmatter, body, and outgoing links.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Wikilink name (note filename without `.md`)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Note content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token signed with HS256 using the `LAGO_JWT_SECRET`.
+        Claims: `sub` (user ID), `email`, `exp`, `iat`.
+
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: Session ID (ULID)
+      schema:
+        type: string
+        pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
+        example: "01JARQX5BWFEG4QKZMT8N9Q3DR"
+
+    BlobHash:
+      name: hash
+      in: path
+      required: true
+      description: SHA-256 hex string
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+        example: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    FilePath:
+      name: path
+      in: path
+      required: true
+      description: File path (wildcard segment, e.g. `src/main.rs`)
+      schema:
+        type: string
+        example: "src/main.rs"
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+    Unauthorized:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+    Conflict:
+      description: Conflict (e.g. fast-forward not possible)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    # ── Error ───────────────────────────────────────────────────────────────
+
+    ErrorBody:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          example: not_found
+        message:
+          type: string
+          description: Human-readable error description
+          example: "session not found: 01JARQX5BWFEG4QKZMT8N9Q3DR"
+
+    # ── Health ──────────────────────────────────────────────────────────────
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        service:
+          type: string
+          example: lago
+        version:
+          type: string
+          example: "0.10.0"
+        uptime_seconds:
+          type: integer
+          format: uint64
+        subsystems:
+          type: object
+          properties:
+            journal:
+              type: string
+              enum: [ok, error]
+            blob_store:
+              type: string
+              enum: [ok, error]
+            auth:
+              type: string
+              enum: [active, disabled]
+            policy:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                rules:
+                  type: integer
+                roles:
+                  type: integer
+        telemetry:
+          type: object
+          properties:
+            sdk:
+              type: string
+              example: life-vigil
+            otlp_configured:
+              type: boolean
+
+    ReadinessResponse:
+      type: object
+      required: [ready, checks]
+      properties:
+        ready:
+          type: boolean
+        checks:
+          type: object
+          properties:
+            journal:
+              type: boolean
+            blob_store:
+              type: boolean
+
+    # ── Sessions ────────────────────────────────────────────────────────────
+
+    SessionType:
+      type: string
+      enum: [vault, agent, site_assets, site_content, default]
+      description: |
+        Session type derived from the name prefix:
+        - `vault:{user_id}` → vault
+        - `agent:{agent_id}` → agent
+        - `site-assets:{scope}` → site_assets
+        - `site-content:{scope}` → site_content
+        - anything else → default
+
+    CreateSessionRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: |
+            Session name. Names with reserved prefixes (`vault:`, `agent:`,
+            `site-assets:`, `site-content:`) require a non-empty identifier
+            after the colon.
+          example: "agent:code-review-bot"
+        model:
+          type: string
+          description: Optional model identifier
+          example: "claude-sonnet-4.6"
+        params:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional key-value parameters
+
+    CreateSessionResponse:
+      type: object
+      required: [session_id, branch_id, session_type]
+      properties:
+        session_id:
+          type: string
+          description: ULID
+        branch_id:
+          type: string
+          description: Always "main" for new sessions
+          example: main
+        session_type:
+          $ref: "#/components/schemas/SessionType"
+
+    SessionResponse:
+      type: object
+      required: [session_id, name, model, created_at, branches, session_type]
+      properties:
+        session_id:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+        created_at:
+          type: integer
+          format: uint64
+          description: Microseconds since epoch
+        branches:
+          type: array
+          items:
+            type: string
+          description: Branch IDs
+        session_type:
+          $ref: "#/components/schemas/SessionType"
+
+    # ── Branches ────────────────────────────────────────────────────────────
+
+    CreateBranchRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Branch name
+          example: experiment
+        fork_point_seq:
+          type: integer
+          format: uint64
+          description: Sequence number to fork from (defaults to current head)
+
+    BranchResponse:
+      type: object
+      required: [branch_id, name, fork_point_seq]
+      properties:
+        branch_id:
+          type: string
+          description: ULID (or "main")
+        name:
+          type: string
+        fork_point_seq:
+          type: integer
+          format: uint64
+
+    MergeBranchRequest:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+          description: Target branch name to merge into
+          example: main
+
+    MergeBranchResponse:
+      type: object
+      required: [merged, strategy, events_merged]
+      properties:
+        merged:
+          type: boolean
+        strategy:
+          type: string
+          example: fast-forward
+        events_merged:
+          type: integer
+
+    # ── Files ───────────────────────────────────────────────────────────────
+
+    FileWriteResponse:
+      type: object
+      required: [path, blob_hash, size_bytes]
+      properties:
+        path:
+          type: string
+          example: "/src/main.rs"
+        blob_hash:
+          type: string
+          description: SHA-256 hex
+        size_bytes:
+          type: integer
+          format: uint64
+
+    ManifestResponse:
+      type: object
+      required: [session_id, entries]
+      properties:
+        session_id:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManifestEntry"
+
+    ManifestEntry:
+      type: object
+      required: [path, blob_hash, size_bytes, updated_at]
+      properties:
+        path:
+          type: string
+          description: Absolute path (e.g. "/src/main.rs")
+        blob_hash:
+          type: string
+          description: SHA-256 hex
+        size_bytes:
+          type: integer
+          format: uint64
+          description: Uncompressed size
+        content_type:
+          type: string
+          description: MIME type (e.g. "text/x-rust")
+        updated_at:
+          type: integer
+          format: uint64
+          description: Microseconds since epoch
+
+    HashLineEdit:
+      description: |
+        A hashline edit operation. Each variant targets a line by its
+        content hash (`anchor_hash`) and line number for conflict-free editing.
+      oneOf:
+        - type: object
+          title: Replace
+          required: [Replace]
+          properties:
+            Replace:
+              type: object
+              required: [anchor_hash, line_num, new_content]
+              properties:
+                anchor_hash:
+                  type: string
+                  description: Blake3 hash of the target line content
+                line_num:
+                  type: integer
+                  format: uint32
+                new_content:
+                  type: string
+        - type: object
+          title: InsertAfter
+          required: [InsertAfter]
+          properties:
+            InsertAfter:
+              type: object
+              required: [anchor_hash, line_num, new_content]
+              properties:
+                anchor_hash:
+                  type: string
+                line_num:
+                  type: integer
+                  format: uint32
+                new_content:
+                  type: string
+        - type: object
+          title: InsertBefore
+          required: [InsertBefore]
+          properties:
+            InsertBefore:
+              type: object
+              required: [anchor_hash, line_num, new_content]
+              properties:
+                anchor_hash:
+                  type: string
+                line_num:
+                  type: integer
+                  format: uint32
+                new_content:
+                  type: string
+        - type: object
+          title: Delete
+          required: [Delete]
+          properties:
+            Delete:
+              type: object
+              required: [anchor_hash, line_num]
+              properties:
+                anchor_hash:
+                  type: string
+                line_num:
+                  type: integer
+                  format: uint32
+        - type: object
+          title: ReplaceRange
+          required: [ReplaceRange]
+          properties:
+            ReplaceRange:
+              type: object
+              required: [start_hash, start_line, end_hash, end_line, new_content]
+              properties:
+                start_hash:
+                  type: string
+                start_line:
+                  type: integer
+                  format: uint32
+                end_hash:
+                  type: string
+                end_line:
+                  type: integer
+                  format: uint32
+                new_content:
+                  type: string
+
+    # ── Blobs ───────────────────────────────────────────────────────────────
+
+    BlobPutResponse:
+      type: object
+      required: [hash, size_bytes]
+      properties:
+        hash:
+          type: string
+          description: SHA-256 hex
+        size_bytes:
+          type: integer
+          format: uint64
+
+    # ── Snapshots ───────────────────────────────────────────────────────────
+
+    CreateSnapshotRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Human-readable tag name
+          example: "v1.0"
+
+    SnapshotResponse:
+      type: object
+      required: [name, branch, seq, created_at]
+      properties:
+        name:
+          type: string
+        branch:
+          type: string
+        seq:
+          type: integer
+          format: uint64
+          description: Sequence number the snapshot covers through
+        created_at:
+          type: integer
+          format: uint64
+          description: Milliseconds since epoch
+
+    SnapshotManifestResponse:
+      type: object
+      required: [snapshot, session_id, branch, seq, entries]
+      properties:
+        snapshot:
+          type: string
+        session_id:
+          type: string
+        branch:
+          type: string
+        seq:
+          type: integer
+          format: uint64
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManifestEntry"
+
+    # ── Diffs ───────────────────────────────────────────────────────────────
+
+    DiffEntry:
+      description: |
+        A diff between two manifest versions. Externally tagged enum
+        (serde default for Rust enums).
+      oneOf:
+        - type: object
+          title: Added
+          required: [Added]
+          properties:
+            Added:
+              type: object
+              required: [path, entry]
+              properties:
+                path:
+                  type: string
+                entry:
+                  $ref: "#/components/schemas/ManifestEntry"
+        - type: object
+          title: Removed
+          required: [Removed]
+          properties:
+            Removed:
+              type: object
+              required: [path, entry]
+              properties:
+                path:
+                  type: string
+                entry:
+                  $ref: "#/components/schemas/ManifestEntry"
+        - type: object
+          title: Modified
+          required: [Modified]
+          properties:
+            Modified:
+              type: object
+              required: [path, old, new]
+              properties:
+                path:
+                  type: string
+                old:
+                  $ref: "#/components/schemas/ManifestEntry"
+                new:
+                  $ref: "#/components/schemas/ManifestEntry"
+
+    # ── Usage ───────────────────────────────────────────────────────────────
+
+    UsageDimension:
+      type: string
+      enum: [Events, StorageBytes, ApiCalls, EgressBytes]
+
+    UsageResponse:
+      type: object
+      required: [session_id, records]
+      properties:
+        session_id:
+          type: string
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageRecordResponse"
+
+    UsageRecordResponse:
+      type: object
+      required: [dimension, period, count]
+      properties:
+        dimension:
+          $ref: "#/components/schemas/UsageDimension"
+        period:
+          type: integer
+          format: uint64
+          description: Hourly bucket (Unix seconds)
+        count:
+          type: integer
+          format: uint64
+
+    UsageSummaryResponse:
+      type: object
+      required: [records]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageSummaryEntry"
+
+    UsageSummaryEntry:
+      type: object
+      required: [session_id, dimension, total]
+      properties:
+        session_id:
+          type: string
+        dimension:
+          $ref: "#/components/schemas/UsageDimension"
+        total:
+          type: integer
+          format: uint64
+
+    # ── Events ──────────────────────────────────────────────────────────────
+
+    EventEnvelope:
+      type: object
+      description: |
+        Core event record in the Lago journal. Used in SSE streaming
+        (Lago format) and internally for all event persistence.
+      required:
+        - event_id
+        - session_id
+        - branch_id
+        - seq
+        - timestamp
+        - payload
+        - schema_version
+      properties:
+        event_id:
+          type: string
+          description: ULID
+        session_id:
+          type: string
+          description: ULID
+        branch_id:
+          type: string
+          description: ULID or "main"
+        run_id:
+          type: string
+          description: Optional ULID
+        seq:
+          type: integer
+          format: uint64
+          description: Monotonic per branch
+        timestamp:
+          type: integer
+          format: uint64
+          description: Microseconds since epoch
+        parent_id:
+          type: string
+          description: Optional parent event ULID
+        payload:
+          description: |
+            Event payload — an externally tagged enum from `aios_protocol::EventKind`.
+            Common variants include: `SessionCreated`, `FileWrite`, `FileDelete`,
+            `FileRename`, `BranchCreated`, `SnapshotCreated`, `Message`,
+            `TextDelta`, `ToolCallRequested`, `ToolCallCompleted`,
+            `ApprovalRequested`, `ApprovalResolved`, `RunFinished`, `Custom`.
+          type: object
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+        schema_version:
+          type: integer
+          default: 1
+
+    # ── Memory / Knowledge ──────────────────────────────────────────────────
+
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: Search terms
+        max_results:
+          type: integer
+          default: 10
+          description: Maximum results to return
+        follow_links:
+          type: boolean
+          default: false
+          description: Whether to follow wikilinks from top results
+
+    SearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+        linked_notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkedNote"
+          description: Present only when `follow_links` is true and links were found
+
+    SearchResult:
+      type: object
+      required: [path, name, frontmatter, excerpts, links, score]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+          description: Note name (filename without .md)
+        frontmatter:
+          type: object
+          description: Parsed YAML frontmatter as JSON
+        excerpts:
+          type: array
+          items:
+            type: string
+          description: Matching lines (up to 5)
+        links:
+          type: array
+          items:
+            type: string
+          description: Outgoing wikilinks
+        score:
+          type: number
+          format: double
+          description: Relevance score (higher is better)
+
+    LinkedNote:
+      type: object
+      required: [path, name, depth, links]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        depth:
+          type: integer
+        links:
+          type: array
+          items:
+            type: string
+
+    TraverseRequest:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+          description: Starting note name (wikilink)
+        depth:
+          type: integer
+          default: 1
+          description: Maximum BFS hops
+        max_notes:
+          type: integer
+          default: 15
+          description: Maximum notes to return
+
+    TraverseResponse:
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraversalResult"
+
+    TraversalResult:
+      type: object
+      required: [path, name, depth, links]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        depth:
+          type: integer
+          description: Hops from start (0 = start note)
+        links:
+          type: array
+          items:
+            type: string
+          description: Outgoing wikilinks
+
+    NoteResponse:
+      type: object
+      required: [path, name, frontmatter, body, links]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        frontmatter:
+          type: object
+          description: Parsed YAML frontmatter as JSON
+        body:
+          type: string
+          description: Markdown body (without frontmatter)
+        links:
+          type: array
+          items:
+            type: string
+          description: Outgoing wikilinks

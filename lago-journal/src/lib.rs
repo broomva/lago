@@ -17,6 +17,7 @@ pub mod redb_journal;
 pub mod snapshot;
 pub mod stream;
 pub mod tables;
+pub mod usage;
 pub mod wal;
 
 pub use redb_journal::{EventNotification, RedbJournal};
