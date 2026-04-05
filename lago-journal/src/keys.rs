@@ -81,6 +81,31 @@ fn read_padded_id(buf: &[u8]) -> String {
     s.trim_end_matches(' ').to_string()
 }
 
+// --- Usage key helpers
+
+/// Total width of a usage compound key: session_id (26B) + dimension (1B) + period (8B BE).
+pub const USAGE_KEY_LEN: usize = ID_WIDTH + 1 + 8; // 35 bytes
+
+/// Encode a compound usage key: session_id (26B) || dimension (1B) || period (8B BE).
+pub fn encode_usage_key(session_id: &str, dimension: u8, period: u64) -> Vec<u8> {
+    let mut key = Vec::with_capacity(USAGE_KEY_LEN);
+    let mut sid_buf = [b' '; ID_WIDTH];
+    let copy_len = session_id.len().min(ID_WIDTH);
+    sid_buf[..copy_len].copy_from_slice(&session_id.as_bytes()[..copy_len]);
+    key.extend_from_slice(&sid_buf);
+    key.push(dimension);
+    key.extend_from_slice(&period.to_be_bytes());
+    key
+}
+
+/// Decode a compound usage key into (session_id, dimension_byte, period).
+pub fn decode_usage_key(key: &[u8]) -> (String, u8, u64) {
+    let sid = read_padded_id(&key[..ID_WIDTH]);
+    let dim = key[ID_WIDTH];
+    let period = u64::from_be_bytes(key[ID_WIDTH + 1..ID_WIDTH + 9].try_into().unwrap());
+    (sid, dim, period)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

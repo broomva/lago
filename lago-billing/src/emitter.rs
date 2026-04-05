@@ -167,8 +167,7 @@ impl MeterEmitter {
                     failed += 1;
                     // Re-accumulate failed events so they retry on next flush.
                     let key = (session_id.clone(), *dimension);
-                    let mut acc =
-                        self.accumulator.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut acc = self.accumulator.lock().unwrap_or_else(|e| e.into_inner());
                     *acc.entry(key).or_insert(0) += value;
                     warn!(
                         error = %e,
@@ -184,9 +183,7 @@ impl MeterEmitter {
         if success > 0 || failed > 0 {
             info!(
                 total = total_events,
-                success,
-                failed,
-                "billing flush complete"
+                success, failed, "billing flush complete"
             );
         }
     }
@@ -211,7 +208,10 @@ impl MeterEmitter {
                 ("event_name", &event.event_name),
                 ("timestamp", &event.timestamp.to_string()),
                 ("identifier", &event.identifier),
-                ("payload[stripe_customer_id]", &event.payload.stripe_customer_id),
+                (
+                    "payload[stripe_customer_id]",
+                    &event.payload.stripe_customer_id,
+                ),
                 ("payload[value]", &event.payload.value),
             ])
             .send()

@@ -31,3 +31,8 @@ pub const SESSIONS: TableDefinition<&str, &str> = TableDefinition::new("sessions
 
 /// Snapshots table: snapshot_id -> serialized snapshot data.
 pub const SNAPSHOTS: TableDefinition<&str, &[u8]> = TableDefinition::new("snapshots");
+
+/// Usage counters table: compound key (session_id 26B + dimension 1B + period 8B BE) -> count (u64).
+///
+/// Tracks metered billing dimensions per session with hourly bucket granularity.
+pub const USAGE: TableDefinition<&[u8], u64> = TableDefinition::new("usage");

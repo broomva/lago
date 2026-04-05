@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use lago_core::{LagoError, LagoResult, SessionId};
 
-use crate::keys::{decode_usage_key, encode_usage_key, USAGE_KEY_LEN};
+use crate::keys::{USAGE_KEY_LEN, decode_usage_key, encode_usage_key};
 use crate::tables::USAGE;
 
 // ─── UsageDimension ──────────────────────────────────────────────────────────
@@ -328,14 +328,16 @@ mod tests {
         // Create the usage table
         {
             let txn = db.begin_write().unwrap();
-            { txn.open_table(USAGE).unwrap(); }
+            {
+                txn.open_table(USAGE).unwrap();
+            }
             txn.commit().unwrap();
         }
         (dir, db)
     }
 
     /// Helper: open a write transaction, run increments, commit.
-    fn write_usage(db: &Database, ops: &[(& str, UsageDimension, u64, u64)]) {
+    fn write_usage(db: &Database, ops: &[(&str, UsageDimension, u64, u64)]) {
         let txn = db.begin_write().unwrap();
         {
             let mut table = txn.open_table(USAGE).unwrap();
@@ -391,25 +393,23 @@ mod tests {
         let sid = "01HQJG5B8P9RJXK7M3N4T6W2YA";
         let period = 7200u64;
 
-        write_usage(&db, &[
-            (sid, UsageDimension::Events, period, 10),
-            (sid, UsageDimension::StorageBytes, period, 1024),
-            (sid, UsageDimension::ApiCalls, period, 3),
-            (sid, UsageDimension::EgressBytes, period, 2048),
-        ]);
+        write_usage(
+            &db,
+            &[
+                (sid, UsageDimension::Events, period, 10),
+                (sid, UsageDimension::StorageBytes, period, 1024),
+                (sid, UsageDimension::ApiCalls, period, 3),
+                (sid, UsageDimension::EgressBytes, period, 2048),
+            ],
+        );
 
         let records = query_session_usage_blocking(&db, sid, None, 0, u64::MAX).unwrap();
         assert_eq!(records.len(), 4);
 
         // Filter by specific dimension
-        let events_only = query_session_usage_blocking(
-            &db,
-            sid,
-            Some(UsageDimension::Events),
-            0,
-            u64::MAX,
-        )
-        .unwrap();
+        let events_only =
+            query_session_usage_blocking(&db, sid, Some(UsageDimension::Events), 0, u64::MAX)
+                .unwrap();
         assert_eq!(events_only.len(), 1);
         assert_eq!(events_only[0].count, 10);
     }
@@ -420,33 +420,26 @@ mod tests {
         let sid = "01HQJG5B8P9RJXK7M3N4T6W2YA";
 
         // Insert across 3 hourly buckets
-        write_usage(&db, &[
-            (sid, UsageDimension::Events, 3600, 1),
-            (sid, UsageDimension::Events, 7200, 2),
-            (sid, UsageDimension::Events, 10800, 3),
-        ]);
+        write_usage(
+            &db,
+            &[
+                (sid, UsageDimension::Events, 3600, 1),
+                (sid, UsageDimension::Events, 7200, 2),
+                (sid, UsageDimension::Events, 10800, 3),
+            ],
+        );
 
         // Query middle bucket only
-        let records = query_session_usage_blocking(
-            &db,
-            sid,
-            Some(UsageDimension::Events),
-            7200,
-            7200,
-        )
-        .unwrap();
+        let records =
+            query_session_usage_blocking(&db, sid, Some(UsageDimension::Events), 7200, 7200)
+                .unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].count, 2);
 
         // Query first two buckets
-        let records = query_session_usage_blocking(
-            &db,
-            sid,
-            Some(UsageDimension::Events),
-            3600,
-            7200,
-        )
-        .unwrap();
+        let records =
+            query_session_usage_blocking(&db, sid, Some(UsageDimension::Events), 3600, 7200)
+                .unwrap();
         assert_eq!(records.len(), 2);
     }
 
@@ -454,12 +447,15 @@ mod tests {
     fn summary_across_sessions() {
         let (_dir, db) = setup();
 
-        write_usage(&db, &[
-            ("S1", UsageDimension::Events, 3600, 10),
-            ("S1", UsageDimension::Events, 7200, 20),
-            ("S2", UsageDimension::Events, 3600, 5),
-            ("S2", UsageDimension::StorageBytes, 3600, 1024),
-        ]);
+        write_usage(
+            &db,
+            &[
+                ("S1", UsageDimension::Events, 3600, 10),
+                ("S1", UsageDimension::Events, 7200, 20),
+                ("S2", UsageDimension::Events, 3600, 5),
+                ("S2", UsageDimension::StorageBytes, 3600, 1024),
+            ],
+        );
 
         let summary = query_usage_summary_blocking(&db, 0, u64::MAX).unwrap();
         // S1: Events=30, S2: Events=5, S2: StorageBytes=1024
@@ -473,9 +469,7 @@ mod tests {
 
         let s2_storage = summary
             .iter()
-            .find(|r| {
-                r.session_id.as_str() == "S2" && r.dimension == UsageDimension::StorageBytes
-            })
+            .find(|r| r.session_id.as_str() == "S2" && r.dimension == UsageDimension::StorageBytes)
             .unwrap();
         assert_eq!(s2_storage.count, 1024);
     }
