@@ -1,0 +1,101 @@
+[
+  {
+    "event_id": "EVT-BF-001",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000000000000,
+    "payload": {
+      "type": "SessionCreated",
+      "name": "branch-fork",
+      "config": {}
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BF-002",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000001000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Start the project"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BF-003",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000002000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "Project initialized."
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BF-004",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000003000000,
+    "payload": {
+      "type": "BranchCreated",
+      "new_branch_id": "feature-x",
+      "fork_point_seq": 3,
+      "name": "feature-x"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BF-005",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "feature-x",
+    "seq": 0,
+    "timestamp": 1700000004000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Implement feature X"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BF-006",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "feature-x",
+    "seq": 0,
+    "timestamp": 1700000005000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "Feature X implemented."
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-BF-007",
+    "session_id": "GOLDEN-BRANCH-FORK",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000006000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Continue on main branch"
+    },
+    "metadata": {},
+    "schema_version": 1
+  }
+]

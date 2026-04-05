@@ -1,0 +1,41 @@
+[package]
+name = "lago-api"
+description = "HTTP REST API and SSE streaming for the Lago agent runtime"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lago-core.workspace = true
+lago-journal.workspace = true
+lago-store.workspace = true
+lago-fs.workspace = true
+lago-policy.workspace = true
+lago-knowledge.workspace = true
+lago-auth.workspace = true
+serde_yaml.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+ulid.workspace = true
+infer.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+http-body-util = "0.1"
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true

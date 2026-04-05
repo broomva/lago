@@ -1,0 +1,92 @@
+[
+  {
+    "event_id": "EVT-TR-001",
+    "session_id": "GOLDEN-TOOL-RT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000000000000,
+    "payload": {
+      "type": "SessionCreated",
+      "name": "tool-round-trip",
+      "config": {}
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-TR-002",
+    "session_id": "GOLDEN-TOOL-RT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000001000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Read the file /etc/hostname"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-TR-003",
+    "session_id": "GOLDEN-TOOL-RT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000002000000,
+    "payload": {
+      "type": "ToolCallRequested",
+      "call_id": "call-001",
+      "tool_name": "read_file",
+      "arguments": {"path": "/etc/hostname"},
+      "category": "fs"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-TR-004",
+    "session_id": "GOLDEN-TOOL-RT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000003000000,
+    "payload": {
+      "type": "ToolCallCompleted",
+      "tool_run_id": "00000000000000000000000000",
+      "call_id": "call-001",
+      "tool_name": "read_file",
+      "result": {"content": "agent-host"},
+      "duration_ms": 12,
+      "status": "ok"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-TR-005",
+    "session_id": "GOLDEN-TOOL-RT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000004000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "The hostname is agent-host.",
+      "model": "gpt-4"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-TR-006",
+    "session_id": "GOLDEN-TOOL-RT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000005000000,
+    "payload": {
+      "type": "SessionClosed",
+      "reason": "completed"
+    },
+    "metadata": {},
+    "schema_version": 1
+  }
+]

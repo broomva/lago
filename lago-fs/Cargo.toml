@@ -1,0 +1,23 @@
+[package]
+name = "lago-fs"
+description = "Filesystem manifest with branching and diffing for the Lago agent runtime"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lago-core.workspace = true
+lago-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+walkdir = "2.5"
+
+[dev-dependencies]
+tempfile = "3.10"

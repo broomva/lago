@@ -1,0 +1,59 @@
+[
+  {
+    "event_id": "EVT-FC-001",
+    "session_id": "GOLDEN-FORWARD-COMPAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000000000000,
+    "payload": {
+      "type": "SessionCreated",
+      "name": "forward-compat",
+      "config": {}
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-FC-002",
+    "session_id": "GOLDEN-FORWARD-COMPAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000001000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Do something futuristic"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-FC-003",
+    "session_id": "GOLDEN-FORWARD-COMPAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000002000000,
+    "payload": {
+      "type": "VisionResult",
+      "image_hash": "abc123",
+      "confidence": 0.95,
+      "labels": ["cat", "outdoor"]
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-FC-004",
+    "session_id": "GOLDEN-FORWARD-COMPAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000003000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "I see a cat outdoors."
+    },
+    "metadata": {},
+    "schema_version": 1
+  }
+]

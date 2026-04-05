@@ -1,0 +1,64 @@
+[
+  {
+    "event_id": "EVT-SC-001",
+    "session_id": "GOLDEN-SIMPLE-CHAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000000000000,
+    "payload": {
+      "type": "SessionCreated",
+      "name": "simple-chat",
+      "config": {}
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-SC-002",
+    "session_id": "GOLDEN-SIMPLE-CHAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000001000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Hello, agent!"
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-SC-003",
+    "session_id": "GOLDEN-SIMPLE-CHAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000002000000,
+    "payload": {
+      "type": "Message",
+      "role": "assistant",
+      "content": "Hello! How can I help you today?",
+      "model": "gpt-4",
+      "token_usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 8,
+        "total_tokens": 18
+      }
+    },
+    "metadata": {},
+    "schema_version": 1
+  },
+  {
+    "event_id": "EVT-SC-004",
+    "session_id": "GOLDEN-SIMPLE-CHAT",
+    "branch_id": "main",
+    "seq": 0,
+    "timestamp": 1700000003000000,
+    "payload": {
+      "type": "Message",
+      "role": "user",
+      "content": "Thanks, goodbye!"
+    },
+    "metadata": {},
+    "schema_version": 1
+  }
+]

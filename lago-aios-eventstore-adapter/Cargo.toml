@@ -1,0 +1,30 @@
+[package]
+name = "lago-aios-eventstore-adapter"
+version.workspace = true
+edition.workspace = true
+description = "aiOS EventStorePort adapter backed by Lago Journal"
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "../../README.md"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aios-protocol.workspace = true
+lago-core.workspace = true
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+lago-journal = { workspace = true }
+serde_json.workspace = true
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"

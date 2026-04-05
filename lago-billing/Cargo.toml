@@ -1,0 +1,21 @@
+[package]
+name = "lago-billing"
+description = "Stripe Meters integration for usage-based billing in Lago"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lago-journal.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio-util.workspace = true

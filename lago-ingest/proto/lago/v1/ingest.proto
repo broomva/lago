@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package lago.v1;
+
+import "lago/v1/common.proto";
+
+service IngestService {
+  // Bidirectional streaming: client sends events, server sends acks
+  rpc Ingest(stream IngestRequest) returns (stream IngestResponse);
+
+  // Create a new session
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+
+  // Get session info
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+}
+
+message IngestRequest {
+  oneof message {
+    EventEnvelope event = 1;
+    Heartbeat heartbeat = 2;
+  }
+}
+
+message IngestResponse {
+  oneof message {
+    Ack ack = 1;
+    Heartbeat heartbeat = 2;
+    BackpressureSignal backpressure = 3;
+  }
+}
+
+message BackpressureSignal {
+  uint64 pending_count = 1;
+  uint64 max_pending = 2;
+}
+
+message CreateSessionRequest {
+  string session_id = 1;
+  SessionConfig config = 2;
+}
+
+message CreateSessionResponse {
+  string session_id = 1;
+  bool created = 2;
+}
+
+message GetSessionRequest {
+  string session_id = 1;
+}
+
+message GetSessionResponse {
+  string session_id = 1;
+  SessionConfig config = 2;
+  uint64 event_count = 3;
+}
