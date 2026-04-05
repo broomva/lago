@@ -19,7 +19,7 @@ interval = 10000
 "#;
 
 /// Default policy file, embedded at compile time from `default-policy.toml`.
-const DEFAULT_POLICY: &str = include_str!("../../../../default-policy.toml");
+const DEFAULT_POLICY: &str = include_str!("../../../default-policy.toml");
 
 /// Execute the `lago init` command.
 ///

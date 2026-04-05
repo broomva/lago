@@ -260,7 +260,7 @@ message = "File operation detected"
 
     #[test]
     fn default_policy_file_parses() {
-        let content = include_str!("../../../default-policy.toml");
+        let content = include_str!("../../default-policy.toml");
         let config = PolicyConfig::from_toml(content).expect("default-policy.toml must parse");
         assert!(
             !config.rules.is_empty(),
