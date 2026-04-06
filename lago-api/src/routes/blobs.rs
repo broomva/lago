@@ -131,18 +131,18 @@ fn serve_blob(
     let blob_hash = BlobHash::from_hex(hash_hex);
 
     // ETag-based conditional request: If-None-Match → 304
-    if let Some(etag) = headers.get("if-none-match") {
-        if let Ok(etag_str) = etag.to_str() {
-            let etag_clean = etag_str.trim_matches('"');
-            if etag_clean == blob_hash.as_str() {
-                return Ok(axum::http::Response::builder()
-                    .status(StatusCode::NOT_MODIFIED)
-                    .header("etag", format!("\"{}\"", blob_hash.as_str()))
-                    .header("cache-control", "public, max-age=31536000, immutable")
-                    .header("accept-ranges", "bytes")
-                    .body(axum::body::Body::empty())
-                    .unwrap());
-            }
+    if let Some(etag) = headers.get("if-none-match")
+        && let Ok(etag_str) = etag.to_str()
+    {
+        let etag_clean = etag_str.trim_matches('"');
+        if etag_clean == blob_hash.as_str() {
+            return Ok(axum::http::Response::builder()
+                .status(StatusCode::NOT_MODIFIED)
+                .header("etag", format!("\"{}\"", blob_hash.as_str()))
+                .header("cache-control", "public, max-age=31536000, immutable")
+                .header("accept-ranges", "bytes")
+                .body(axum::body::Body::empty())
+                .unwrap());
         }
     }
 
@@ -155,37 +155,37 @@ fn serve_blob(
     let content_type = infer_content_type(&data, ct_override);
 
     // Check for Range header → serve partial content
-    if let Some(range_header) = headers.get("range") {
-        if let Ok(range_str) = range_header.to_str() {
-            if let Some(range) = parse_range(range_str, total_size) {
-                let start = range.start as usize;
-                let end = range.end as usize;
-                let slice = &data[start..=end];
-                let content_length = slice.len() as u64;
+    if let Some(range_header) = headers.get("range")
+        && let Ok(range_str) = range_header.to_str()
+    {
+        if let Some(range) = parse_range(range_str, total_size) {
+            let start = range.start as usize;
+            let end = range.end as usize;
+            let slice = &data[start..=end];
+            let content_length = slice.len() as u64;
 
-                return Ok(axum::http::Response::builder()
-                    .status(StatusCode::PARTIAL_CONTENT)
-                    .header("content-type", &content_type)
-                    .header("content-length", content_length.to_string())
-                    .header(
-                        "content-range",
-                        format!("bytes {}-{}/{}", range.start, range.end, total_size),
-                    )
-                    .header("accept-ranges", "bytes")
-                    .header("x-blob-hash", blob_hash.as_str())
-                    .header("etag", format!("\"{}\"", blob_hash.as_str()))
-                    .header("cache-control", "public, max-age=31536000, immutable")
-                    .body(axum::body::Body::from(slice.to_vec()))
-                    .unwrap());
-            } else {
-                // Invalid range → 416 Range Not Satisfiable
-                return Ok(axum::http::Response::builder()
-                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                    .header("content-range", format!("bytes */{total_size}"))
-                    .header("accept-ranges", "bytes")
-                    .body(axum::body::Body::empty())
-                    .unwrap());
-            }
+            return Ok(axum::http::Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header("content-type", &content_type)
+                .header("content-length", content_length.to_string())
+                .header(
+                    "content-range",
+                    format!("bytes {}-{}/{}", range.start, range.end, total_size),
+                )
+                .header("accept-ranges", "bytes")
+                .header("x-blob-hash", blob_hash.as_str())
+                .header("etag", format!("\"{}\"", blob_hash.as_str()))
+                .header("cache-control", "public, max-age=31536000, immutable")
+                .body(axum::body::Body::from(slice.to_vec()))
+                .unwrap());
+        } else {
+            // Invalid range → 416 Range Not Satisfiable
+            return Ok(axum::http::Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header("content-range", format!("bytes */{total_size}"))
+                .header("accept-ranges", "bytes")
+                .body(axum::body::Body::empty())
+                .unwrap());
         }
     }
 

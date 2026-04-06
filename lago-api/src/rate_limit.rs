@@ -132,24 +132,23 @@ struct RateLimitExceeded {
 /// Extract client IP from the request, checking common proxy headers.
 fn extract_client_ip(request: &Request) -> IpAddr {
     // Check X-Forwarded-For header (Railway sets this)
-    if let Some(forwarded) = request.headers().get("x-forwarded-for") {
-        if let Ok(value) = forwarded.to_str() {
-            // Take the first IP (original client)
-            if let Some(first) = value.split(',').next() {
-                if let Ok(ip) = first.trim().parse::<IpAddr>() {
-                    return ip;
-                }
-            }
+    if let Some(forwarded) = request.headers().get("x-forwarded-for")
+        && let Ok(value) = forwarded.to_str()
+    {
+        // Take the first IP (original client)
+        if let Some(first) = value.split(',').next()
+            && let Ok(ip) = first.trim().parse::<IpAddr>()
+        {
+            return ip;
         }
     }
 
     // Check X-Real-IP
-    if let Some(real_ip) = request.headers().get("x-real-ip") {
-        if let Ok(value) = real_ip.to_str() {
-            if let Ok(ip) = value.trim().parse::<IpAddr>() {
-                return ip;
-            }
-        }
+    if let Some(real_ip) = request.headers().get("x-real-ip")
+        && let Ok(value) = real_ip.to_str()
+        && let Ok(ip) = value.trim().parse::<IpAddr>()
+    {
+        return ip;
     }
 
     // Fall back to connection info

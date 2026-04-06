@@ -148,12 +148,11 @@ async fn build_manifest_at_snapshot(
             covers_through_seq,
             ..
         } = &event.payload
+            && snapshot_id.as_str() == snapshot_name
         {
-            if snapshot_id.as_str() == snapshot_name {
-                covers_seq = Some(*covers_through_seq);
-                branch = event.branch_id.as_str().to_string();
-                break;
-            }
+            covers_seq = Some(*covers_through_seq);
+            branch = event.branch_id.as_str().to_string();
+            break;
         }
     }
 

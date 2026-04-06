@@ -348,15 +348,15 @@ async fn build_manifest(
     // Check cache first (read lock — fast path)
     {
         let cache = state.manifest_cache.read().await;
-        if let Some(cached) = cache.get(&cache_key) {
-            if cached.cached_at.elapsed().as_secs() < MANIFEST_CACHE_TTL_SECS {
-                debug!(
-                    session_id = %session_id,
-                    branch_id = %branch_id,
-                    "manifest cache hit"
-                );
-                return Ok(cached.entries.clone());
-            }
+        if let Some(cached) = cache.get(&cache_key)
+            && cached.cached_at.elapsed().as_secs() < MANIFEST_CACHE_TTL_SECS
+        {
+            debug!(
+                session_id = %session_id,
+                branch_id = %branch_id,
+                "manifest cache hit"
+            );
+            return Ok(cached.entries.clone());
         }
     }
 

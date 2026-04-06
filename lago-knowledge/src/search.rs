@@ -74,15 +74,15 @@ impl KnowledgeIndex {
             score += name_matches * 2.0;
 
             // Boost tag matches
-            if let Some(tags) = note.frontmatter.get("tags") {
-                if let Some(tag_seq) = tags.as_sequence() {
-                    for tag_val in tag_seq {
-                        if let Some(tag_str) = tag_val.as_str() {
-                            let tag_lower = tag_str.to_lowercase();
-                            for term in &terms {
-                                if tag_lower == *term {
-                                    score += 1.0;
-                                }
+            if let Some(tags) = note.frontmatter.get("tags")
+                && let Some(tag_seq) = tags.as_sequence()
+            {
+                for tag_val in tag_seq {
+                    if let Some(tag_str) = tag_val.as_str() {
+                        let tag_lower = tag_str.to_lowercase();
+                        for term in &terms {
+                            if tag_lower == *term {
+                                score += 1.0;
                             }
                         }
                     }

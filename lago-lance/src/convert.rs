@@ -213,17 +213,17 @@ pub fn batch_to_events(batch: &RecordBatch) -> Vec<EventEnvelope> {
         };
 
         // If this row has a non-null embedding, store it in metadata.
-        if let Some(emb_col) = embeddings {
-            if !emb_col.is_null(i) {
-                let inner_array = emb_col.value(i);
-                let values = inner_array
-                    .as_any()
-                    .downcast_ref::<Float32Array>()
-                    .expect("embedding inner must be Float32Array");
-                let vec: Vec<f32> = (0..values.len()).map(|j| values.value(j)).collect();
-                if let Ok(json) = serde_json::to_string(&vec) {
-                    metadata.insert(EMBEDDING_META_KEY.to_string(), json);
-                }
+        if let Some(emb_col) = embeddings
+            && !emb_col.is_null(i)
+        {
+            let inner_array = emb_col.value(i);
+            let values = inner_array
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .expect("embedding inner must be Float32Array");
+            let vec: Vec<f32> = (0..values.len()).map(|j| values.value(j)).collect();
+            if let Ok(json) = serde_json::to_string(&vec) {
+                metadata.insert(EMBEDDING_META_KEY.to_string(), json);
             }
         }
 

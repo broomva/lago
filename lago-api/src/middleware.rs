@@ -77,10 +77,10 @@ fn request_to_tool_name(method: &Method, path: &str) -> Option<String> {
 fn extract_session_id(path: &str) -> String {
     let parts: Vec<&str> = path.split('/').collect();
     for (i, part) in parts.iter().enumerate() {
-        if *part == "sessions" {
-            if let Some(id) = parts.get(i + 1) {
-                return id.to_string();
-            }
+        if *part == "sessions"
+            && let Some(id) = parts.get(i + 1)
+        {
+            return id.to_string();
         }
     }
     "anonymous".to_string()
@@ -156,14 +156,13 @@ async fn has_admin_role(state: &AppState, rbac_session_id: &str) -> bool {
 
     // Check if any assigned role has the Admin permission
     for role_name in role_names {
-        if let Some(role) = mgr.roles().get(role_name) {
-            if role
+        if let Some(role) = mgr.roles().get(role_name)
+            && role
                 .permissions
                 .iter()
                 .any(|p| matches!(p, Permission::Admin))
-            {
-                return true;
-            }
+        {
+            return true;
         }
     }
 
@@ -305,43 +304,43 @@ pub async fn policy_middleware(
     let session_id = extract_session_id(&path);
 
     // ── Phase 1: Policy engine check (write operations only) ──────────
-    if let Some(ref policy_engine) = state.policy_engine {
-        if let Some(tool_name) = request_to_tool_name(&method, &path) {
-            let ctx = PolicyContext {
-                tool_name,
-                arguments: serde_json::json!({}),
-                category: Some("http".to_string()),
-                risk: None,
-                session_id: session_id.clone(),
-                role: None,
-                sandbox_tier: None,
-            };
+    if let Some(ref policy_engine) = state.policy_engine
+        && let Some(tool_name) = request_to_tool_name(&method, &path)
+    {
+        let ctx = PolicyContext {
+            tool_name,
+            arguments: serde_json::json!({}),
+            category: Some("http".to_string()),
+            risk: None,
+            session_id: session_id.clone(),
+            role: None,
+            sandbox_tier: None,
+        };
 
-            let decision = policy_engine.evaluate(&ctx);
+        let decision = policy_engine.evaluate(&ctx);
 
-            match decision.decision {
-                PolicyDecisionKind::Deny => {
-                    let body = PolicyDeniedBody {
-                        error: "policy_denied".to_string(),
-                        message: decision
-                            .explanation
-                            .unwrap_or_else(|| "operation denied by policy".to_string()),
-                        rule_id: decision.rule_id,
-                    };
-                    return (StatusCode::FORBIDDEN, axum::Json(body)).into_response();
-                }
-                PolicyDecisionKind::RequireApproval => {
-                    let body = PolicyDeniedBody {
-                        error: "approval_required".to_string(),
-                        message: decision
-                            .explanation
-                            .unwrap_or_else(|| "operation requires approval".to_string()),
-                        rule_id: decision.rule_id,
-                    };
-                    return (StatusCode::FORBIDDEN, axum::Json(body)).into_response();
-                }
-                PolicyDecisionKind::Allow => { /* continue to RBAC check */ }
+        match decision.decision {
+            PolicyDecisionKind::Deny => {
+                let body = PolicyDeniedBody {
+                    error: "policy_denied".to_string(),
+                    message: decision
+                        .explanation
+                        .unwrap_or_else(|| "operation denied by policy".to_string()),
+                    rule_id: decision.rule_id,
+                };
+                return (StatusCode::FORBIDDEN, axum::Json(body)).into_response();
             }
+            PolicyDecisionKind::RequireApproval => {
+                let body = PolicyDeniedBody {
+                    error: "approval_required".to_string(),
+                    message: decision
+                        .explanation
+                        .unwrap_or_else(|| "operation requires approval".to_string()),
+                    rule_id: decision.rule_id,
+                };
+                return (StatusCode::FORBIDDEN, axum::Json(body)).into_response();
+            }
+            PolicyDecisionKind::Allow => { /* continue to RBAC check */ }
         }
     }
 

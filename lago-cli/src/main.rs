@@ -254,23 +254,21 @@ async fn main() {
 /// Resolve auth token from: --token flag → BROOMVA_API_TOKEN env → ~/.broomva/config.json
 fn resolve_token() -> Option<String> {
     // 1. BROOMVA_API_TOKEN env var
-    if let Ok(t) = std::env::var("BROOMVA_API_TOKEN") {
-        if !t.is_empty() {
-            return Some(t);
-        }
+    if let Ok(t) = std::env::var("BROOMVA_API_TOKEN")
+        && !t.is_empty()
+    {
+        return Some(t);
     }
 
     // 2. ~/.broomva/config.json
     if let Some(home) = dirs_path() {
         let config_path = home.join(".broomva").join("config.json");
-        if let Ok(content) = std::fs::read_to_string(config_path) {
-            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(token) = config.get("token").and_then(|t| t.as_str()) {
-                    if !token.is_empty() {
-                        return Some(token.to_string());
-                    }
-                }
-            }
+        if let Ok(content) = std::fs::read_to_string(config_path)
+            && let Ok(config) = serde_json::from_str::<serde_json::Value>(&content)
+            && let Some(token) = config.get("token").and_then(|t| t.as_str())
+            && !token.is_empty()
+        {
+            return Some(token.to_string());
         }
     }
 
@@ -596,10 +594,10 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
 fn auth_headers(token: &Option<String>) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
-    if let Some(t) = token {
-        if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {t}")) {
-            headers.insert(reqwest::header::AUTHORIZATION, val);
-        }
+    if let Some(t) = token
+        && let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {t}"))
+    {
+        headers.insert(reqwest::header::AUTHORIZATION, val);
     }
     headers
 }

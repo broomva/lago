@@ -62,10 +62,10 @@ impl KnowledgeIndex {
             // Enqueue linked notes if within depth
             if level < depth {
                 for link_target in &note.links {
-                    if let Some(linked_note) = self.resolve_wikilink(link_target) {
-                        if !visited.contains(&linked_note.path) {
-                            queue.push_back((linked_note.path.clone(), level + 1));
-                        }
+                    if let Some(linked_note) = self.resolve_wikilink(link_target)
+                        && !visited.contains(&linked_note.path)
+                    {
+                        queue.push_back((linked_note.path.clone(), level + 1));
                     }
                 }
             }

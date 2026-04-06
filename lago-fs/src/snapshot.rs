@@ -58,18 +58,19 @@ pub fn snapshot(
 
         // Check if we can reuse the previous hash (fast path)
         let mut reused = false;
-        if let Some(prev_entry) = previous_manifest.get(&virtual_path) {
-            if prev_entry.size_bytes == size && prev_entry.updated_at == mtime {
-                // Match: assume content is identical to skip IO + hashing
-                new_manifest.apply_write(
-                    virtual_path.clone(),
-                    prev_entry.blob_hash.clone(),
-                    size,
-                    prev_entry.content_type.clone(),
-                    mtime,
-                );
-                reused = true;
-            }
+        if let Some(prev_entry) = previous_manifest.get(&virtual_path)
+            && prev_entry.size_bytes == size
+            && prev_entry.updated_at == mtime
+        {
+            // Match: assume content is identical to skip IO + hashing
+            new_manifest.apply_write(
+                virtual_path.clone(),
+                prev_entry.blob_hash.clone(),
+                size,
+                prev_entry.content_type.clone(),
+                mtime,
+            );
+            reused = true;
         }
 
         if !reused {

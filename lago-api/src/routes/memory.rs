@@ -294,15 +294,15 @@ pub async fn search(
         let mut linked = Vec::new();
         for result in &results {
             for link in &result.links {
-                if let Some(note) = index.resolve_wikilink(link) {
-                    if seen_paths.insert(note.path.clone()) {
-                        linked.push(LinkedNote {
-                            path: note.path.clone(),
-                            name: note.name.clone(),
-                            depth: 1,
-                            links: note.links.clone(),
-                        });
-                    }
+                if let Some(note) = index.resolve_wikilink(link)
+                    && seen_paths.insert(note.path.clone())
+                {
+                    linked.push(LinkedNote {
+                        path: note.path.clone(),
+                        name: note.name.clone(),
+                        depth: 1,
+                        links: note.links.clone(),
+                    });
                 }
                 if linked.len() >= 10 {
                     break;
