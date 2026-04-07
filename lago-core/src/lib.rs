@@ -13,7 +13,7 @@ pub mod sandbox;
 pub mod session;
 pub mod tool_span;
 
-pub use cognitive::{CognitionKind, MemCube, MemoryTier};
+pub use cognitive::{CognitionKind, ConflictResolution, MemCube, MemoryTier, assemble};
 pub use error::{LagoError, LagoResult};
 pub use event::{EventEnvelope, EventPayload, MemoryScope};
 pub use hashline::{HashLineEdit, HashLineError, HashLineFile};

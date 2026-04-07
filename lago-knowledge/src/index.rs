@@ -167,6 +167,67 @@ impl KnowledgeIndex {
     pub fn is_stale(&self, ttl: std::time::Duration) -> bool {
         self.built_at.elapsed() > ttl
     }
+
+    /// Generate a flat, LLM-readable catalog of all notes.
+    ///
+    /// Format: one line per note — `slug | title_or_claim | tags: tag1, tag2`.
+    /// Notes are organized by parent directory. Designed to fit in ~2000 tokens
+    /// for a vault of ~100 notes.
+    pub fn generate_index(&self) -> String {
+        use std::collections::BTreeMap;
+
+        // Group notes by parent directory
+        let mut groups: BTreeMap<String, Vec<&Note>> = BTreeMap::new();
+        for note in self.notes.values() {
+            let parent = note
+                .path
+                .rsplit_once('/')
+                .map(|(dir, _)| dir.to_string())
+                .unwrap_or_else(|| "/".to_string());
+            groups.entry(parent).or_default().push(note);
+        }
+
+        let mut output = String::new();
+
+        for (dir, mut notes) in groups {
+            notes.sort_by(|a, b| a.name.cmp(&b.name));
+
+            output.push_str(&format!("### {dir}\n"));
+
+            for note in notes {
+                // Extract title: frontmatter title > frontmatter core_claim > name
+                let title = note
+                    .frontmatter
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| note.frontmatter.get("core_claim").and_then(|v| v.as_str()))
+                    .unwrap_or(&note.name);
+
+                // Extract tags
+                let tags = note
+                    .frontmatter
+                    .get("tags")
+                    .and_then(|v| v.as_sequence())
+                    .map(|seq| {
+                        seq.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+
+                if tags.is_empty() {
+                    output.push_str(&format!("- {} | {}\n", note.name, title));
+                } else {
+                    output.push_str(&format!("- {} | {} | tags: {}\n", note.name, title, tags));
+                }
+            }
+
+            output.push('\n');
+        }
+
+        output
+    }
 }
 
 #[cfg(test)]
@@ -254,5 +315,76 @@ mod tests {
 
         assert!(!index.is_stale(std::time::Duration::from_secs(60)));
         assert!(index.is_stale(std::time::Duration::ZERO));
+    }
+
+    #[test]
+    fn generate_index_basic_format() {
+        let files = [
+            (
+                "/docs/architecture.md",
+                "---\ntitle: System Architecture\ntags:\n  - design\n  - rust\n---\n# Architecture",
+            ),
+            (
+                "/docs/readme.md",
+                "---\ntitle: Getting Started\n---\n# Readme",
+            ),
+            ("/notes/idea.md", "# Idea\n\nJust a note."),
+        ];
+
+        let (_tmp, store, entries) = setup_store_with_files(&files);
+        let index = KnowledgeIndex::build(&entries, &store).unwrap();
+        let catalog = index.generate_index();
+
+        // Should have directory headers
+        assert!(catalog.contains("### /docs"));
+        assert!(catalog.contains("### /notes"));
+
+        // Should contain note entries
+        assert!(catalog.contains("architecture | System Architecture | tags: design, rust"));
+        assert!(catalog.contains("readme | Getting Started"));
+        assert!(catalog.contains("idea | idea")); // no frontmatter title, falls back to name
+    }
+
+    #[test]
+    fn generate_index_with_core_claim() {
+        let files = [(
+            "/entities/concept.md",
+            "---\ncore_claim: Event sourcing is the way\n---\n# Concept",
+        )];
+
+        let (_tmp, store, entries) = setup_store_with_files(&files);
+        let index = KnowledgeIndex::build(&entries, &store).unwrap();
+        let catalog = index.generate_index();
+
+        assert!(catalog.contains("concept | Event sourcing is the way"));
+    }
+
+    #[test]
+    fn generate_index_empty() {
+        let files: [(&str, &str); 0] = [];
+        let (_tmp, store, entries) = setup_store_with_files(&files);
+        let index = KnowledgeIndex::build(&entries, &store).unwrap();
+        let catalog = index.generate_index();
+        assert!(catalog.is_empty());
+    }
+
+    #[test]
+    fn generate_index_sorted_within_group() {
+        let files = [
+            ("/docs/zebra.md", "# Zebra"),
+            ("/docs/alpha.md", "# Alpha"),
+            ("/docs/middle.md", "# Middle"),
+        ];
+
+        let (_tmp, store, entries) = setup_store_with_files(&files);
+        let index = KnowledgeIndex::build(&entries, &store).unwrap();
+        let catalog = index.generate_index();
+
+        let lines: Vec<&str> = catalog.lines().collect();
+        let note_lines: Vec<&&str> = lines.iter().filter(|l| l.starts_with("- ")).collect();
+        assert_eq!(note_lines.len(), 3);
+        assert!(note_lines[0].contains("alpha"));
+        assert!(note_lines[1].contains("middle"));
+        assert!(note_lines[2].contains("zebra"));
     }
 }

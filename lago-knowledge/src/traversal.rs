@@ -20,6 +20,87 @@ pub struct TraversalResult {
 }
 
 impl KnowledgeIndex {
+    /// Find all notes that link TO a given slug (reverse edges / backlinks).
+    ///
+    /// Iterates all notes and returns those whose outgoing wikilinks
+    /// resolve to the target slug.
+    pub fn backlinks(&self, slug: &str) -> Vec<&crate::index::Note> {
+        // Resolve the target so we know its canonical path
+        let target_path = match self.resolve_wikilink(slug) {
+            Some(note) => note.path.clone(),
+            None => return Vec::new(),
+        };
+
+        self.notes
+            .values()
+            .filter(|note| {
+                // Skip the target note itself
+                if note.path == target_path {
+                    return false;
+                }
+                // Check if any of this note's links resolve to the target
+                note.links.iter().any(|link| {
+                    self.resolve_wikilink(link)
+                        .is_some_and(|resolved| resolved.path == target_path)
+                })
+            })
+            .collect()
+    }
+
+    /// Compute normalized graph distance between two notes.
+    ///
+    /// Returns a proximity score in \[0.0, 1.0\]:
+    /// - `1.0` means the notes are the same
+    /// - `0.5` means directly linked (distance 1)
+    /// - `0.0` means disconnected (no path found)
+    ///
+    /// Formula: `1.0 / (1.0 + distance)`, or `0.0` if unreachable.
+    /// Uses BFS through wikilink edges (forward only).
+    pub fn graph_proximity(&self, a: &str, b: &str) -> f32 {
+        let note_a = match self.resolve_wikilink(a) {
+            Some(n) => n,
+            None => return 0.0,
+        };
+        let note_b = match self.resolve_wikilink(b) {
+            Some(n) => n,
+            None => return 0.0,
+        };
+
+        // Same note
+        if note_a.path == note_b.path {
+            return 1.0;
+        }
+
+        let target_path = &note_b.path;
+
+        // BFS from a
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back((note_a.path.clone(), 0usize));
+
+        while let Some((path, dist)) = queue.pop_front() {
+            if !visited.insert(path.clone()) {
+                continue;
+            }
+
+            if let Some(note) = self.notes.get(&path) {
+                for link in &note.links {
+                    if let Some(linked) = self.resolve_wikilink(link) {
+                        if linked.path == *target_path {
+                            return 1.0 / (1.0 + (dist + 1) as f32);
+                        }
+                        if !visited.contains(&linked.path) {
+                            queue.push_back((linked.path.clone(), dist + 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Disconnected
+        0.0
+    }
+
     /// BFS traversal from a starting note, up to `depth` hops and
     /// `max_notes` total results.
     ///
@@ -175,5 +256,109 @@ mod tests {
         let (_tmp, index) = build_index(&[("/a.md", "# A")]);
         let results = index.traverse("nonexistent", 1, 10);
         assert!(results.is_empty());
+    }
+
+    // --- backlinks tests ---
+
+    #[test]
+    fn backlinks_basic() {
+        // B and C link to A
+        let (_tmp, index) = build_index(&[
+            ("/a.md", "# A\n\nTarget note."),
+            ("/b.md", "# B\n\nSee [[A]]."),
+            ("/c.md", "# C\n\nAlso see [[A]] and [[B]]."),
+        ]);
+
+        let mut bl: Vec<&str> = index
+            .backlinks("A")
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        bl.sort();
+        assert_eq!(bl, vec!["b", "c"]);
+    }
+
+    #[test]
+    fn backlinks_no_self_link() {
+        // A links to itself — should not appear in backlinks
+        let (_tmp, index) = build_index(&[
+            ("/a.md", "# A\n\nSee [[A]]."),
+            ("/b.md", "# B\n\nSee [[A]]."),
+        ]);
+
+        let bl: Vec<&str> = index
+            .backlinks("A")
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        assert_eq!(bl, vec!["b"]);
+    }
+
+    #[test]
+    fn backlinks_missing_target() {
+        let (_tmp, index) = build_index(&[("/a.md", "# A\n\nContent.")]);
+        let bl = index.backlinks("nonexistent");
+        assert!(bl.is_empty());
+    }
+
+    #[test]
+    fn backlinks_no_incoming() {
+        // A has no incoming links
+        let (_tmp, index) =
+            build_index(&[("/a.md", "# A\n\nSee [[B]]."), ("/b.md", "# B\n\nLeaf.")]);
+
+        let bl = index.backlinks("A");
+        assert!(bl.is_empty());
+    }
+
+    // --- graph_proximity tests ---
+
+    #[test]
+    fn proximity_same_note() {
+        let (_tmp, index) = build_index(&[("/a.md", "# A\n\nContent.")]);
+        let p = index.graph_proximity("A", "A");
+        assert!((p - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn proximity_direct_link() {
+        let (_tmp, index) =
+            build_index(&[("/a.md", "# A\n\nSee [[B]]."), ("/b.md", "# B\n\nEnd.")]);
+
+        let p = index.graph_proximity("A", "B");
+        // Distance 1 → 1/(1+1) = 0.5
+        assert!((p - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn proximity_two_hops() {
+        // A → B → C
+        let (_tmp, index) = build_index(&[
+            ("/a.md", "# A\n\nSee [[B]]."),
+            ("/b.md", "# B\n\nSee [[C]]."),
+            ("/c.md", "# C\n\nEnd."),
+        ]);
+
+        let p = index.graph_proximity("A", "C");
+        // Distance 2 → 1/(1+2) = 0.333...
+        assert!((p - 1.0 / 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn proximity_disconnected() {
+        let (_tmp, index) = build_index(&[
+            ("/a.md", "# A\n\nIsolated."),
+            ("/b.md", "# B\n\nAlso isolated."),
+        ]);
+
+        let p = index.graph_proximity("A", "B");
+        assert!((p - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn proximity_missing_note() {
+        let (_tmp, index) = build_index(&[("/a.md", "# A\n\nContent.")]);
+        assert!((index.graph_proximity("A", "nonexistent") - 0.0).abs() < f32::EPSILON);
+        assert!((index.graph_proximity("nonexistent", "A") - 0.0).abs() < f32::EPSILON);
     }
 }
