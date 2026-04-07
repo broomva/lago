@@ -116,7 +116,11 @@ impl Default for DaemonConfig {
 // --- Default value functions (used by serde and Default impl)
 
 fn default_data_dir() -> PathBuf {
-    PathBuf::from(".lago")
+    if let Some(root) = life_paths::find_project_root() {
+        root.join(".life").join("lago")
+    } else {
+        PathBuf::from(".lago")
+    }
 }
 
 fn default_policy_path() -> PathBuf {
