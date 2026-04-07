@@ -434,7 +434,7 @@ impl Journal for RedbJournal {
         &self,
         event: EventEnvelope,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
-        let span = tracing::info_span!(
+        let span = tracing::debug_span!(
             "lago.journal.append",
             lago.stream_id = %event.session_id,
             lago.event_count = 1,
@@ -466,7 +466,7 @@ impl Journal for RedbJournal {
         events: Vec<EventEnvelope>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
         let span =
-            tracing::info_span!("lago.journal.append_batch", lago.event_count = events.len(),);
+            tracing::debug_span!("lago.journal.append_batch", lago.event_count = events.len(),);
         let db = Arc::clone(&self.db);
         let notify_tx = self.notify_tx.clone();
         Box::pin(
@@ -497,7 +497,7 @@ impl Journal for RedbJournal {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = LagoResult<Vec<EventEnvelope>>> + Send + '_>,
     > {
-        let span = tracing::info_span!("lago.journal.read");
+        let span = tracing::debug_span!("lago.journal.read");
         let db = Arc::clone(&self.db);
         Box::pin(
             async move {
@@ -529,7 +529,7 @@ impl Journal for RedbJournal {
         session_id: &SessionId,
         branch_id: &BranchId,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
-        let span = tracing::info_span!(
+        let span = tracing::debug_span!(
             "lago.journal.head_seq",
             lago.stream_id = %session_id,
         );
@@ -553,7 +553,7 @@ impl Journal for RedbJournal {
         after_seq: SeqNo,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<EventStream>> + Send + '_>>
     {
-        let span = tracing::info_span!(
+        let span = tracing::debug_span!(
             "lago.journal.stream",
             lago.stream_id = %session_id,
         );
