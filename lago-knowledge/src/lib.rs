@@ -14,10 +14,17 @@
 //!
 //! [`KnowledgeIndex::lint`] detects structural issues: orphan pages,
 //! broken wikilinks, contradictions, stale claims, and missing pages.
+//!
+//! ## Document ingestion
+//!
+//! The [`ingest`] module normalizes raw source documents (JSONL transcripts,
+//! Obsidian markdown, plain text) into [`lago_core::cognitive::MemCube`]s
+//! with PII redaction and noise filtering.
 
 pub mod bm25;
 mod frontmatter;
 mod index;
+pub mod ingest;
 pub mod lint;
 mod search;
 mod traversal;
@@ -26,6 +33,7 @@ mod wikilink;
 pub use bm25::Bm25Index;
 pub use frontmatter::parse_frontmatter;
 pub use index::{KnowledgeError, KnowledgeIndex, Note};
+pub use ingest::{ChunkStrategy, IngestConfig, SourceFormat, detect_format, ingest_file};
 pub use lint::{Contradiction, LintReport};
 pub use search::{HybridSearchConfig, SearchResult};
 pub use traversal::TraversalResult;
