@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use redb::{Database, ReadableTable};
 use tokio::sync::broadcast;
-use tracing::{Instrument, debug};
+use tracing::{Instrument, debug, info_span};
 
 use lago_core::{
     BranchId, EventEnvelope, EventId, EventQuery, EventStream, Journal, LagoError, LagoResult,
@@ -434,10 +434,11 @@ impl Journal for RedbJournal {
         &self,
         event: EventEnvelope,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
-        let span = tracing::debug_span!(
+        let span = info_span!(
             "lago.journal.append",
             lago.stream_id = %event.session_id,
             lago.event_count = 1,
+            lago.event_kind = event.payload.variant_name(),
         );
         let db = Arc::clone(&self.db);
         let notify_tx = self.notify_tx.clone();
@@ -465,8 +466,15 @@ impl Journal for RedbJournal {
         &self,
         events: Vec<EventEnvelope>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
-        let span =
-            tracing::debug_span!("lago.journal.append_batch", lago.event_count = events.len(),);
+        let first_kind = events
+            .first()
+            .map(|e| e.payload.variant_name())
+            .unwrap_or("empty");
+        let span = info_span!(
+            "lago.journal.append_batch",
+            lago.event_count = events.len(),
+            lago.event_kind = first_kind,
+        );
         let db = Arc::clone(&self.db);
         let notify_tx = self.notify_tx.clone();
         Box::pin(
@@ -497,7 +505,21 @@ impl Journal for RedbJournal {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = LagoResult<Vec<EventEnvelope>>> + Send + '_>,
     > {
-        let span = tracing::debug_span!("lago.journal.read");
+        let session_attr = query
+            .session_id
+            .as_ref()
+            .map(|s| s.as_str().to_string())
+            .unwrap_or_default();
+        let branch_attr = query
+            .branch_id
+            .as_ref()
+            .map(|b| b.as_str().to_string())
+            .unwrap_or_default();
+        let span = info_span!(
+            "lago.journal.read",
+            lago.session_id = %session_attr,
+            lago.branch_id = %branch_attr,
+        );
         let db = Arc::clone(&self.db);
         Box::pin(
             async move {
@@ -529,7 +551,7 @@ impl Journal for RedbJournal {
         session_id: &SessionId,
         branch_id: &BranchId,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<SeqNo>> + Send + '_>> {
-        let span = tracing::debug_span!(
+        let span = info_span!(
             "lago.journal.head_seq",
             lago.stream_id = %session_id,
         );
@@ -553,7 +575,7 @@ impl Journal for RedbJournal {
         after_seq: SeqNo,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LagoResult<EventStream>> + Send + '_>>
     {
-        let span = tracing::debug_span!(
+        let span = info_span!(
             "lago.journal.stream",
             lago.stream_id = %session_id,
         );
