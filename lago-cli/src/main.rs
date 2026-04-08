@@ -115,6 +115,12 @@ enum Commands {
         #[command(subcommand)]
         action: MemoryAction,
     },
+
+    /// Knowledge wiki operations (local, no daemon required)
+    Wiki {
+        #[command(subcommand)]
+        action: WikiAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -226,6 +232,66 @@ enum MemoryAction {
     Delete {
         /// File path in the vault
         path: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum WikiAction {
+    /// Hybrid search (BM25 + graph proximity) across wiki notes
+    Search {
+        /// Search query
+        query: String,
+
+        /// Directory containing .md files
+        #[arg(long, default_value = ".")]
+        wiki_dir: PathBuf,
+
+        /// Maximum results
+        #[arg(long, default_value_t = 10)]
+        max_results: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Lint the knowledge graph for issues
+    Lint {
+        /// Directory containing .md files
+        #[arg(long, default_value = ".")]
+        wiki_dir: PathBuf,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Generate LLM-readable index of all notes
+    Index {
+        /// Directory containing .md files
+        #[arg(long, default_value = ".")]
+        wiki_dir: PathBuf,
+    },
+
+    /// Ingest a document into MemCubes
+    Ingest {
+        /// File to ingest
+        path: PathBuf,
+
+        /// Show detailed output
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Assemble L0+L1 context for session bootstrap
+    WakeUp {
+        /// Directory containing .md files
+        #[arg(long, default_value = ".")]
+        wiki_dir: PathBuf,
+
+        /// Token budget (default 900)
+        #[arg(long, default_value_t = 900)]
+        tokens: usize,
     },
 }
 
@@ -377,6 +443,29 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
         }
+
+        Commands::Wiki { action } => match action {
+            WikiAction::Search {
+                query,
+                wiki_dir,
+                max_results,
+                json,
+            } => {
+                commands::wiki::search(&wiki_dir, &query, max_results, json)?;
+            }
+            WikiAction::Lint { wiki_dir, json } => {
+                commands::wiki::lint(&wiki_dir, json)?;
+            }
+            WikiAction::Index { wiki_dir } => {
+                commands::wiki::index(&wiki_dir)?;
+            }
+            WikiAction::Ingest { path, verbose } => {
+                commands::wiki::ingest_file(&path, verbose)?;
+            }
+            WikiAction::WakeUp { wiki_dir, tokens } => {
+                commands::wiki::wakeup(&wiki_dir, tokens)?;
+            }
+        },
 
         Commands::Memory { action } => {
             let base_url = format!("http://127.0.0.1:{api_port}");
