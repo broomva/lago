@@ -23,6 +23,7 @@
 
 pub mod benchmark;
 pub mod bm25;
+pub mod evaluation;
 mod frontmatter;
 mod index;
 pub mod ingest;
@@ -37,6 +38,11 @@ pub use benchmark::{
     QuestionResult, SplitMetrics,
 };
 pub use bm25::Bm25Index;
+pub use evaluation::{
+    ConstraintSeverity, KnowledgeConstraintViolation, KnowledgeQualityError,
+    KnowledgeQualityEvaluator, KnowledgeQualityMetrics, KnowledgeQualityOutcome,
+    KnowledgeQualityWeights,
+};
 pub use frontmatter::parse_frontmatter;
 pub use index::{KnowledgeError, KnowledgeIndex, Note};
 pub use ingest::{ChunkStrategy, IngestConfig, SourceFormat, detect_format, ingest_file};
