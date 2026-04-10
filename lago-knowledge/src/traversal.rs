@@ -20,6 +20,42 @@ pub struct TraversalResult {
 }
 
 impl KnowledgeIndex {
+    /// Resolve a user-facing graph reference to a note.
+    ///
+    /// Accepts exact manifest paths (`/notes/foo.md`), relative paths
+    /// (`notes/foo.md`), path stems (`notes/foo`), plain wikilink targets
+    /// (`Foo`), and bracketed wikilinks (`[[Foo#heading]]`).
+    pub fn resolve_note_ref(&self, target: &str) -> Option<&crate::index::Note> {
+        let clean = target
+            .trim()
+            .trim_start_matches("[[")
+            .trim_end_matches("]]")
+            .split('#')
+            .next()
+            .unwrap_or(target)
+            .trim();
+
+        if clean.is_empty() {
+            return None;
+        }
+
+        if let Some(note) = self.get_note(clean) {
+            return Some(note);
+        }
+
+        if !clean.starts_with('/') {
+            let absolute = format!("/{clean}");
+            if let Some(note) = self.get_note(&absolute) {
+                return Some(note);
+            }
+        }
+
+        let without_md = clean.trim_end_matches(".md");
+        self.resolve_wikilink(without_md.trim_start_matches('/'))
+            .or_else(|| self.resolve_wikilink(without_md))
+            .or_else(|| self.resolve_wikilink(clean))
+    }
+
     /// Find all notes that link TO a given slug (reverse edges / backlinks).
     ///
     /// Iterates all notes and returns those whose outgoing wikilinks
@@ -112,7 +148,7 @@ impl KnowledgeIndex {
         let mut queue = VecDeque::new();
 
         // Resolve the start note
-        let start_note = match self.resolve_wikilink(start) {
+        let start_note = match self.resolve_note_ref(start) {
             Some(note) => note,
             None => return results,
         };
@@ -256,6 +292,27 @@ mod tests {
         let (_tmp, index) = build_index(&[("/a.md", "# A")]);
         let results = index.traverse("nonexistent", 1, 10);
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn resolves_exact_path_and_bracketed_wikilink_refs() {
+        let (_tmp, index) = build_index(&[
+            ("/notes/a.md", "# A\n\nSee [[B#details]]."),
+            ("/notes/b.md", "# B"),
+        ]);
+
+        assert_eq!(
+            index
+                .resolve_note_ref("/notes/a.md")
+                .map(|note| note.path.as_str()),
+            Some("/notes/a.md")
+        );
+        assert_eq!(
+            index
+                .resolve_note_ref("[[B#details]]")
+                .map(|note| note.path.as_str()),
+            Some("/notes/b.md")
+        );
     }
 
     // --- backlinks tests ---
