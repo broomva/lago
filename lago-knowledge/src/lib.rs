@@ -24,6 +24,7 @@
 pub mod benchmark;
 pub mod bm25;
 pub mod evaluation;
+pub mod execution;
 mod frontmatter;
 mod index;
 pub mod ingest;
@@ -42,6 +43,10 @@ pub use evaluation::{
     ConstraintSeverity, KnowledgeConstraintViolation, KnowledgeQualityError,
     KnowledgeQualityEvaluator, KnowledgeQualityMetrics, KnowledgeQualityOutcome,
     KnowledgeQualityWeights,
+};
+pub use execution::{
+    KnowledgeRuntimeSignals, KnowledgeTrialConfig, KnowledgeTrialError, KnowledgeTrialExecution,
+    KnowledgeTrialExecutor,
 };
 pub use frontmatter::parse_frontmatter;
 pub use index::{KnowledgeError, KnowledgeIndex, Note};
