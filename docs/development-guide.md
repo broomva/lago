@@ -28,7 +28,7 @@ workspace currently tracks 12 crates, including `lago-knowledge` and
 | `lago-journal` | 24 | Key encoding, redb CRUD, sessions, snapshots, notifications |
 | `lago-store` | 17 | Blob put/get, SHA-256 hashing, zstd compression |
 | `lago-ingest` | 10 | Proto codec roundtrips, ack/heartbeat construction |
-| `lago-knowledge` | 139 | Knowledge indexing, search, lint, benchmark, calibration, promotion |
+| `lago-knowledge` | 142 | Knowledge indexing, search, lint, benchmark, calibration campaign, promotion |
 | `lago-auth` | 5 | JWT validation, auth middleware, user/session mapping |
 | `lago-aios-eventstore-adapter` | 0 | Canonical adapter is covered through cross-project conformance and integration paths |
 | `lago-cli` | 0 | Primarily validated via integration flows and manual CLI verification |
@@ -212,6 +212,10 @@ CLI flags override config file values.
 
 EGRI-approved knowledge threshold artifacts are promoted into the optional
 `[knowledge]` section of `lago.toml` by `lago-knowledge`'s promotion pipeline.
+`KnowledgeCalibrationCampaign` runs the bounded proposer → trial runner →
+evaluator loop and can hand the best qualifying artifact to that promotion
+pipeline. The trial runner is a trait seam, so local benchmark execution and
+future Arcan-backed mock/live campaign executors use the same contract.
 The writer validates the artifact, preserves unrelated TOML sections, increments
 the promotion `version`, records `rollback_target`, and emits an
 `egri.knowledge.promoted` event payload for audit/replay.

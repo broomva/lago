@@ -23,6 +23,7 @@
 
 pub mod benchmark;
 pub mod bm25;
+pub mod calibration;
 pub mod evaluation;
 pub mod execution;
 mod frontmatter;
@@ -40,6 +41,10 @@ pub use benchmark::{
     QuestionResult, SplitMetrics,
 };
 pub use bm25::Bm25Index;
+pub use calibration::{
+    KnowledgeCalibrationCampaign, KnowledgeCalibrationConfig, KnowledgeCalibrationError,
+    KnowledgeCalibrationReport, KnowledgeCalibrationTrialRecord, KnowledgeTrialRunner,
+};
 pub use evaluation::{
     ConstraintSeverity, KnowledgeConstraintViolation, KnowledgeQualityError,
     KnowledgeQualityEvaluator, KnowledgeQualityMetrics, KnowledgeQualityOutcome,
