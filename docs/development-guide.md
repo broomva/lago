@@ -215,6 +215,9 @@ EGRI-approved knowledge threshold artifacts are promoted into the optional
 The writer validates the artifact, preserves unrelated TOML sections, increments
 the promotion `version`, records `rollback_target`, and emits an
 `egri.knowledge.promoted` event payload for audit/replay.
+Autonomic consumes that promotion event, monitors consecutive post-promotion
+knowledge-health regressions, and writes an `autonomic.RollbackRequested`
+advisory event when EGRI should restore the prior threshold artifact.
 See `/Users/broomva/broomva/core/life/docs/STATUS.md` for canonical crate and
 test accounting tied to this capability.
 
