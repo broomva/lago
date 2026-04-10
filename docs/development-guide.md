@@ -204,6 +204,32 @@ interval = 10000
 
 CLI flags override config file values.
 
+### Knowledge Calibration
+
+EGRI-approved knowledge threshold artifacts are promoted into the optional
+`[knowledge]` section of `lago.toml` by `lago-knowledge`'s promotion pipeline.
+The writer validates the artifact, preserves unrelated TOML sections, increments
+the promotion `version`, records `rollback_target`, and emits an
+`egri.knowledge.promoted` event payload for audit/replay.
+
+```toml
+[knowledge]
+bm25_k1 = 1.2
+bm25_b = 0.75
+hybrid_keyword_boost = 0.3
+hybrid_graph_boost = 0.15
+health_threshold = 0.7
+max_obs_before_compact = 50
+stale_index_ms = 3600000
+freshness_stale_secs = 3600
+wakeup_token_budget = 600
+version = "v1"
+promoted_at = "2026-04-10T00:00:00Z"
+trial_id = "trial-042"
+baseline_score = 0.72
+promoted_score = 0.85
+```
+
 ## Workspace Dependencies
 
 All shared dependencies are declared in the root `Cargo.toml` and inherited by crates:

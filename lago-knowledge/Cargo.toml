@@ -11,6 +11,7 @@ categories.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+chrono.workspace = true
 lago-core.workspace = true
 lago-store.workspace = true
 serde.workspace = true
@@ -18,6 +19,7 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 regex.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
