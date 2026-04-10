@@ -43,7 +43,10 @@ pub use ingest::{ChunkStrategy, IngestConfig, SourceFormat, detect_format, inges
 pub use lint::{Contradiction, LintReport};
 pub use search::{HybridSearchConfig, SearchResult};
 pub use thresholds::{
-    KnowledgeThresholdArtifact, KnowledgeThresholdBounds, NumericBound, ThresholdValidationError,
+    KnowledgeThresholdArtifact, KnowledgeThresholdBounds, KnowledgeThresholdProposal,
+    KnowledgeThresholdProposer, NumericBound, ProposalStrategy, ThresholdChange, ThresholdInsight,
+    ThresholdParameter, ThresholdProposalConfig, ThresholdProposalContext, ThresholdProposalError,
+    ThresholdTrialOutcome, ThresholdValidationError, ThresholdValue,
 };
 pub use traversal::TraversalResult;
 pub use wikilink::extract_wikilinks;
