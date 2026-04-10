@@ -28,7 +28,7 @@ workspace currently tracks 12 crates, including `lago-knowledge` and
 | `lago-journal` | 24 | Key encoding, redb CRUD, sessions, snapshots, notifications |
 | `lago-store` | 17 | Blob put/get, SHA-256 hashing, zstd compression |
 | `lago-ingest` | 10 | Proto codec roundtrips, ack/heartbeat construction |
-| `lago-knowledge` | 138 | Knowledge indexing, search, lint, benchmark, calibration, promotion |
+| `lago-knowledge` | 139 | Knowledge indexing, search, lint, benchmark, calibration, promotion |
 | `lago-auth` | 5 | JWT validation, auth middleware, user/session mapping |
 | `lago-aios-eventstore-adapter` | 0 | Canonical adapter is covered through cross-project conformance and integration paths |
 | `lago-cli` | 0 | Primarily validated via integration flows and manual CLI verification |

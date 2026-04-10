@@ -109,6 +109,12 @@ pub enum KnowledgePromotionError {
     InvalidVersion(String),
     #[error("knowledge config lock poisoned for {0}")]
     LockPoisoned(String),
+    #[error("failed to resolve current directory for config path {path}: {source}")]
+    CurrentDir {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -400,7 +406,7 @@ fn promotion_lock_key(path: &Path) -> Result<PathBuf, KnowledgePromotionError> {
     } else {
         std::env::current_dir()
             .map(|cwd| cwd.join(path))
-            .map_err(|source| KnowledgePromotionError::ReadConfig {
+            .map_err(|source| KnowledgePromotionError::CurrentDir {
                 path: path.display().to_string(),
                 source,
             })
@@ -441,7 +447,7 @@ fn replace_knowledge_section(contents: &str, section: &str) -> String {
         .iter()
         .enumerate()
         .skip(start + 1)
-        .find(|(_, line)| is_toml_table_header(line))
+        .find(|(_, line)| is_unrelated_toml_table_header(line))
         .map(|(idx, _)| idx)
         .unwrap_or(lines.len());
 
@@ -459,9 +465,14 @@ fn replace_knowledge_section(contents: &str, section: &str) -> String {
     output
 }
 
-fn is_toml_table_header(line: &str) -> bool {
+fn is_unrelated_toml_table_header(line: &str) -> bool {
     let trimmed = line.trim();
-    trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.starts_with('#')
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') || trimmed.starts_with('#') {
+        return false;
+    }
+
+    let table = trimmed.trim_start_matches('[').trim_end_matches(']').trim();
+    !(table == "knowledge" || table.starts_with("knowledge."))
 }
 
 fn next_version(previous: Option<&str>) -> Result<String, KnowledgePromotionError> {
@@ -506,7 +517,7 @@ fn parameters_changed(
         old.hybrid_graph_boost,
         artifact.hybrid_graph_boost,
     );
-    if old.health_threshold != artifact.health_threshold {
+    if (old.health_threshold - artifact.health_threshold).abs() > f32::EPSILON {
         changed.push("health_threshold".to_string());
     }
     if old.max_obs_before_compact != artifact.max_obs_before_compact {
@@ -644,6 +655,26 @@ mod tests {
         assert_eq!(record.rollback_target, None);
         assert!(!contents.contains("bm25_k1 = 1.4"));
         assert!(contents.contains("trial_id = \"trial-042\""));
+        assert!(contents.contains("[auth]"));
+    }
+
+    #[test]
+    fn promotion_replaces_knowledge_subtables() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("lago.toml");
+        std::fs::write(
+            &path,
+            "[knowledge]\nversion = \"v1\"\ntrial_id = \"old\"\nbm25_k1 = 1.2\nbm25_b = 0.75\nhybrid_keyword_boost = 0.3\nhybrid_graph_boost = 0.15\nhealth_threshold = 0.7\nmax_obs_before_compact = 50\nstale_index_ms = 3600000\nfreshness_stale_secs = 3600\nwakeup_token_budget = 600\npromoted_at = \"old\"\nbaseline_score = 0.1\npromoted_score = 0.2\n\n[knowledge.cache]\nstrategy = \"manual\"\n\n[[knowledge.items]]\nname = \"orphan\"\n\n[auth]\n",
+        )
+        .unwrap();
+
+        promote_to_lago_toml(&path, &request()).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+
+        assert_eq!(contents.matches("[knowledge]").count(), 1);
+        assert!(!contents.contains("[knowledge.cache]"));
+        assert!(!contents.contains("[[knowledge.items]]"));
+        assert!(!contents.contains("strategy = \"manual\""));
         assert!(contents.contains("[auth]"));
     }
 
