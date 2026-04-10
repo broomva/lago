@@ -31,6 +31,11 @@ impl Bm25Index {
     /// Tokenizes each note's name and body (lowercased, whitespace-split)
     /// and computes document frequencies and average document length.
     pub fn build(notes: &HashMap<String, Note>) -> Self {
+        Self::build_with_params(notes, 1.2, 0.75)
+    }
+
+    /// Build a BM25 index with explicit parameterization.
+    pub fn build_with_params(notes: &HashMap<String, Note>, k1: f64, b: f64) -> Self {
         let mut term_doc_freq: HashMap<String, usize> = HashMap::new();
         let mut total_terms: usize = 0;
 
@@ -60,8 +65,8 @@ impl Bm25Index {
             doc_count,
             avg_doc_len,
             term_doc_freq,
-            k1: 1.2,
-            b: 0.75,
+            k1,
+            b,
         }
     }
 
@@ -238,5 +243,13 @@ mod tests {
         assert!((idx.avg_doc_len - 4.5).abs() < f64::EPSILON); // (4+5)/2
         assert_eq!(idx.k1, 1.2);
         assert_eq!(idx.b, 0.75);
+    }
+
+    #[test]
+    fn build_with_params_overrides_defaults() {
+        let notes = make_notes(&[("/a.md", "alpha", "one two three")]);
+        let idx = Bm25Index::build_with_params(&notes, 1.8, 0.4);
+        assert_eq!(idx.k1, 1.8);
+        assert_eq!(idx.b, 0.4);
     }
 }

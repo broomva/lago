@@ -81,11 +81,11 @@ pub fn search(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (index, _store) = build_index_from_dir(wiki_dir)?;
-    let bm25 = Bm25Index::build(index.notes());
     let config = HybridSearchConfig {
         max_results,
         ..Default::default()
     };
+    let bm25 = Bm25Index::build_with_params(index.notes(), config.bm25_k1, config.bm25_b);
 
     let results = index.search_hybrid(query, &bm25, &config);
 

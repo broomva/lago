@@ -21,20 +21,29 @@
 //! Obsidian markdown, plain text) into [`lago_core::cognitive::MemCube`]s
 //! with PII redaction and noise filtering.
 
+pub mod benchmark;
 pub mod bm25;
 mod frontmatter;
 mod index;
 pub mod ingest;
 pub mod lint;
 mod search;
+mod thresholds;
 mod traversal;
 mod wikilink;
 
+pub use benchmark::{
+    BenchmarkError, BenchmarkQuestion, BenchmarkRun, HoldoutSplit, KnowledgeBenchmark,
+    QuestionResult, SplitMetrics,
+};
 pub use bm25::Bm25Index;
 pub use frontmatter::parse_frontmatter;
 pub use index::{KnowledgeError, KnowledgeIndex, Note};
 pub use ingest::{ChunkStrategy, IngestConfig, SourceFormat, detect_format, ingest_file};
 pub use lint::{Contradiction, LintReport};
 pub use search::{HybridSearchConfig, SearchResult};
+pub use thresholds::{
+    KnowledgeThresholdArtifact, KnowledgeThresholdBounds, NumericBound, ThresholdValidationError,
+};
 pub use traversal::TraversalResult;
 pub use wikilink::extract_wikilinks;

@@ -139,6 +139,10 @@ pub struct HybridSearchConfig {
     pub max_results: usize,
     /// Whether to boost recent notes (reserved for future use).
     pub temporal_boost: bool,
+    /// BM25 term-frequency saturation parameter.
+    pub bm25_k1: f64,
+    /// BM25 document-length normalization parameter.
+    pub bm25_b: f64,
 }
 
 impl Default for HybridSearchConfig {
@@ -148,6 +152,8 @@ impl Default for HybridSearchConfig {
             graph_boost: 0.15,
             max_results: 10,
             temporal_boost: false,
+            bm25_k1: 1.2,
+            bm25_b: 0.75,
         }
     }
 }
@@ -495,6 +501,8 @@ mod tests {
         assert!((config.graph_boost - 0.15).abs() < f64::EPSILON);
         assert_eq!(config.max_results, 10);
         assert!(!config.temporal_boost);
+        assert!((config.bm25_k1 - 1.2).abs() < f64::EPSILON);
+        assert!((config.bm25_b - 0.75).abs() < f64::EPSILON);
     }
 
     #[test]
