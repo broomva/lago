@@ -1,7 +1,8 @@
 //! Promotion pipeline for EGRI knowledge-threshold calibration.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use chrono::{SecondsFormat, Utc};
 use lago_core::{
@@ -106,11 +107,13 @@ pub enum KnowledgePromotionError {
     SerializeConfig(#[from] toml::ser::Error),
     #[error("invalid promoted knowledge version: {0}")]
     InvalidVersion(String),
+    #[error("knowledge config lock poisoned for {0}")]
+    LockPoisoned(String),
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 struct KnowledgeConfigFile {
-    knowledge: Option<PromotedKnowledgeConfig>,
+    knowledge: Option<toml::Value>,
 }
 
 impl KnowledgePromotionRequest {
@@ -257,12 +260,7 @@ pub fn load_promoted_knowledge_config(
         }
     };
 
-    let parsed: KnowledgeConfigFile =
-        toml::from_str(&contents).map_err(|source| KnowledgePromotionError::ParseConfig {
-            path: path.display().to_string(),
-            source,
-        })?;
-    Ok(parsed.knowledge)
+    parse_promoted_knowledge_config(path, &contents)
 }
 
 pub fn promote_to_lago_toml(
@@ -271,12 +269,11 @@ pub fn promote_to_lago_toml(
 ) -> Result<KnowledgePromotionRecord, KnowledgePromotionError> {
     request.validate()?;
 
-    let previous = load_promoted_knowledge_config(path)?;
-    let rollback_target = previous.as_ref().map(|config| config.version.clone());
-    let version = next_version(rollback_target.as_deref())?;
-    let promoted_config =
-        PromotedKnowledgeConfig::from_request(request, version.clone(), rollback_target.clone());
-    let section = render_knowledge_section(&promoted_config)?;
+    let lock = promotion_lock(path)?;
+    let _guard = lock
+        .lock()
+        .map_err(|_| KnowledgePromotionError::LockPoisoned(path.display().to_string()))?;
+
     let contents = match std::fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -287,6 +284,13 @@ pub fn promote_to_lago_toml(
             });
         }
     };
+
+    let previous = parse_promoted_knowledge_config(path, &contents)?;
+    let rollback_target = previous.as_ref().map(|config| config.version.clone());
+    let version = next_version(rollback_target.as_deref())?;
+    let promoted_config =
+        PromotedKnowledgeConfig::from_request(request, version.clone(), rollback_target.clone());
+    let section = render_knowledge_section(&promoted_config)?;
     let updated = replace_knowledge_section(&contents, &section);
 
     if let Some(parent) = path.parent()
@@ -299,7 +303,13 @@ pub fn promote_to_lago_toml(
             }
         })?;
     }
-    std::fs::write(path, updated).map_err(|source| KnowledgePromotionError::WriteConfig {
+
+    let temp_path = promotion_temp_path(path);
+    std::fs::write(&temp_path, updated).map_err(|source| KnowledgePromotionError::WriteConfig {
+        path: temp_path.display().to_string(),
+        source,
+    })?;
+    std::fs::rename(&temp_path, path).map_err(|source| KnowledgePromotionError::WriteConfig {
         path: path.display().to_string(),
         source,
     })?;
@@ -326,6 +336,84 @@ pub async fn publish_promotion_event(
     journal
         .append(record.event_envelope(session_id, branch_id))
         .await
+}
+
+fn parse_promoted_knowledge_config(
+    path: &Path,
+    contents: &str,
+) -> Result<Option<PromotedKnowledgeConfig>, KnowledgePromotionError> {
+    let parsed: KnowledgeConfigFile =
+        toml::from_str(contents).map_err(|source| KnowledgePromotionError::ParseConfig {
+            path: path.display().to_string(),
+            source,
+        })?;
+    let Some(knowledge) = parsed.knowledge else {
+        return Ok(None);
+    };
+    if !has_promotion_metadata(&knowledge) {
+        return Ok(None);
+    }
+    knowledge
+        .try_into()
+        .map(Some)
+        .map_err(|source| KnowledgePromotionError::ParseConfig {
+            path: path.display().to_string(),
+            source,
+        })
+}
+
+fn has_promotion_metadata(value: &toml::Value) -> bool {
+    let Some(table) = value.as_table() else {
+        return false;
+    };
+    [
+        "version",
+        "promoted_at",
+        "trial_id",
+        "baseline_score",
+        "promoted_score",
+        "rollback_target",
+    ]
+    .iter()
+    .any(|key| table.contains_key(*key))
+}
+
+fn promotion_locks() -> &'static Mutex<HashMap<PathBuf, Arc<Mutex<()>>>> {
+    static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    LOCKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn promotion_lock(path: &Path) -> Result<Arc<Mutex<()>>, KnowledgePromotionError> {
+    let key = promotion_lock_key(path)?;
+    let mut locks = promotion_locks()
+        .lock()
+        .map_err(|_| KnowledgePromotionError::LockPoisoned(path.display().to_string()))?;
+    Ok(locks
+        .entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone())
+}
+
+fn promotion_lock_key(path: &Path) -> Result<PathBuf, KnowledgePromotionError> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .map_err(|source| KnowledgePromotionError::ReadConfig {
+                path: path.display().to_string(),
+                source,
+            })
+    }
+}
+
+fn promotion_temp_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("lago.toml");
+    let temp_name = format!(".{file_name}.{}.tmp", EventId::new());
+    path.with_file_name(temp_name)
 }
 
 fn render_knowledge_section(
@@ -533,6 +621,28 @@ mod tests {
 
         assert_eq!(contents.matches("[knowledge]").count(), 1);
         assert!(!contents.contains("trial_id = \"old\""));
+        assert!(contents.contains("trial_id = \"trial-042\""));
+        assert!(contents.contains("[auth]"));
+    }
+
+    #[test]
+    fn promotion_treats_unversioned_knowledge_section_as_baseline() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("lago.toml");
+        std::fs::write(
+            &path,
+            "[knowledge]\nbm25_k1 = 1.4\nbm25_b = 0.7\n\n[auth]\n",
+        )
+        .unwrap();
+
+        assert_eq!(load_promoted_knowledge_config(&path).unwrap(), None);
+
+        let record = promote_to_lago_toml(&path, &request()).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+
+        assert_eq!(record.version, "v1");
+        assert_eq!(record.rollback_target, None);
+        assert!(!contents.contains("bm25_k1 = 1.4"));
         assert!(contents.contains("trial_id = \"trial-042\""));
         assert!(contents.contains("[auth]"));
     }
