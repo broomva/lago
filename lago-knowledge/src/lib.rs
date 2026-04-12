@@ -25,6 +25,7 @@ pub mod benchmark;
 pub mod bm25;
 pub mod calibration;
 pub mod evaluation;
+pub mod event_index;
 pub mod execution;
 mod frontmatter;
 mod index;
@@ -50,6 +51,7 @@ pub use evaluation::{
     KnowledgeQualityEvaluator, KnowledgeQualityMetrics, KnowledgeQualityOutcome,
     KnowledgeQualityWeights,
 };
+pub use event_index::{EventSearchEntry, EventSearchIndex, EventSearchResult};
 pub use execution::{
     KnowledgeRuntimeSignals, KnowledgeTrialConfig, KnowledgeTrialError, KnowledgeTrialExecution,
     KnowledgeTrialExecutor,
