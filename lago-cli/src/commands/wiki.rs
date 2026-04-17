@@ -281,7 +281,7 @@ pub fn wakeup(wiki_dir: &Path, token_budget: usize) -> Result<(), Box<dyn std::e
         scored_notes.push((&note.name, title, score));
     }
 
-    scored_notes.sort_by(|a, b| b.2.cmp(&a.2));
+    scored_notes.sort_by_key(|t| std::cmp::Reverse(t.2));
 
     let mut tokens_used = 50; // L0 overhead
     for (name, title, score) in &scored_notes {

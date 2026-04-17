@@ -94,16 +94,12 @@ impl RbacManager {
                         has_explicit_deny = true;
                     }
 
-                    Permission::AllowCategory(cat) => {
-                        if category == Some(cat.as_str()) {
-                            has_explicit_allow = true;
-                        }
+                    Permission::AllowCategory(cat) if category == Some(cat.as_str()) => {
+                        has_explicit_allow = true;
                     }
 
-                    Permission::DenyCategory(cat) => {
-                        if category == Some(cat.as_str()) {
-                            has_explicit_deny = true;
-                        }
+                    Permission::DenyCategory(cat) if category == Some(cat.as_str()) => {
+                        has_explicit_deny = true;
                     }
 
                     _ => {}
