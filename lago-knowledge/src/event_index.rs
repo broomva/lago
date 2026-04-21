@@ -412,7 +412,7 @@ mod tests {
         let idx = EventSearchIndex::build(entries);
 
         let results = idx.search("deployment production", 10);
-        assert!(results.len() >= 1);
+        assert!(!results.is_empty());
         // Both deployment-related entries from different sessions
         let sessions: Vec<&str> = results.iter().map(|r| r.session_id.as_str()).collect();
         assert!(sessions.contains(&"session-A") || sessions.contains(&"session-B"));
