@@ -4,3 +4,6 @@ pub use lago_fs as fs;
 pub use lago_journal as journal;
 pub use lago_policy as policy;
 pub use lago_store as store;
+
+#[cfg(feature = "schema")]
+pub use lago_api_schema as schema;

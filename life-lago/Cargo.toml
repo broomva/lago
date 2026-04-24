@@ -8,6 +8,11 @@ repository.workspace = true
 homepage.workspace = true
 description = "Persistence substrate facade for the Life Agent OS — re-exports lago-core, lago-journal, lago-store, lago-fs, lago-api, and lago-policy"
 
+[features]
+default = ["runtime"]
+runtime = []
+schema = ["dep:lago-api-schema"]
+
 [dependencies]
 lago-core = { path = "../lago-core", version = "0.3.0" }
 lago-journal = { path = "../lago-journal", version = "0.3.0" }
@@ -15,6 +20,7 @@ lago-store = { path = "../lago-store", version = "0.3.0" }
 lago-fs = { path = "../lago-fs", version = "0.3.0" }
 lago-api = { path = "../lago-api", version = "0.3.0" }
 lago-policy = { path = "../lago-policy", version = "0.3.0" }
+lago-api-schema = { workspace = true, optional = true }
 
 [lints]
 workspace = true
