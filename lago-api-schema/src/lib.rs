@@ -1,9 +1,12 @@
-//! HTTP API DTOs for lagod — schema-only crate.
-//!
-//! This crate intentionally contains **no runtime code**. It exists so
-//! `life-kernel-facade` can depend on typed request/response shapes without
-//! pulling in lagod's server runtime. Types are filled in by Phase 0 tasks
-//! that mirror the canonical HTTP surface at
-//! `core/life/crates/lago/lagod/src/`.
+//! HTTP API DTOs for lagod.
 
 #![forbid(unsafe_code)]
+
+pub use aios_protocol::billing::{
+    BillingPeriod, Invoice, InvoiceLine, TenantId, UsageRecord, UsageUnit,
+};
+pub use aios_protocol::blob::{BlobHash, BlobMetadata};
+pub use aios_protocol::event::{EventEnvelope, EventRecord};
+pub use aios_protocol::knowledge::{
+    KnowledgeQuery, KnowledgeSearchResult, Note, NoteDraft, NoteEdge, NoteEdgeKind, NoteHit, NoteId,
+};
