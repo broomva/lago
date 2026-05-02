@@ -20,6 +20,18 @@ jsonwebtoken.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 base64.workspace = true
+# Spec D D-Sub-E: rotation chain walking + revocation cache shared with
+# anima-identity. We depend on the anima crates (no kms-* features
+# pulled — just the trait + types) so lago-auth's verifier can resolve
+# DIDs against the journal regardless of which custody backend minted
+# the original signature.
+anima-core.workspace = true
+anima-identity = { path = "../../anima/anima-identity", version = "0.3.0" }
+async-trait = { workspace = true }
+# P-256 / ES256 verification for the rotated agent-JWT path.
+p256 = { workspace = true }
+# Ed25519 verification for the legacy agent-JWT path.
+ed25519-dalek = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

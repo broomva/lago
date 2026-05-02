@@ -9,7 +9,10 @@ pub mod jwt;
 pub mod middleware;
 pub mod session_map;
 
-pub use agent_jwt::{AgentJwtAlg, detect_alg, extract_kid};
+pub use agent_jwt::{
+    AgentJwtAlg, AgentJwtVerifier, EmptyJournal, JournalResolver, VerifiedAgentJwt, detect_alg,
+    extract_kid, verify_jwt,
+};
 pub use jwt::BroomvaClaims;
 pub use middleware::{AuthLayer, UserContext, auth_middleware};
 pub use session_map::SessionMap;
