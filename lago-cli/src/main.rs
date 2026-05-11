@@ -91,6 +91,33 @@ enum Commands {
         branch: String,
     },
 
+    /// Replay a session's events as the recursion tree produced by
+    /// `spawn_agent` calls (closes architecture spec §9.4).
+    ///
+    /// Reads the session's `ergon.stream` events and reconstructs the
+    /// agent-spawn hierarchy from `ToolUseStart(spawn_agent)` /
+    /// `ToolUseEnd` bracketing. Prints an indented ASCII tree showing
+    /// each spawned agent's name, depth, event-seq range, token usage,
+    /// and the non-spawn tool calls it made.
+    Replay {
+        /// Session ID (required)
+        #[arg(long)]
+        session: String,
+
+        /// Branch name
+        #[arg(long, default_value = "main")]
+        branch: String,
+
+        /// Maximum number of events to read from the journal
+        #[arg(long, default_value_t = 10_000)]
+        limit: usize,
+
+        /// Render as a recursion tree (default; currently the only
+        /// supported output mode for this command).
+        #[arg(long, default_value_t = true)]
+        tree: bool,
+    },
+
     /// Compact events and quarantine unreferenced blobs (garbage collection)
     Compact {
         /// Session ID (required)
@@ -421,6 +448,24 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     path,
                     session_id: session,
                     branch,
+                },
+            )
+            .await?;
+        }
+
+        Commands::Replay {
+            session,
+            branch,
+            limit,
+            tree,
+        } => {
+            commands::replay::run(
+                data_dir,
+                commands::replay::ReplayOptions {
+                    session_id: session,
+                    branch,
+                    limit,
+                    tree,
                 },
             )
             .await?;

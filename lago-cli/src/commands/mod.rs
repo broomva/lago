@@ -3,6 +3,7 @@ pub mod cat;
 pub mod compact;
 pub mod init;
 pub mod log;
+pub mod replay;
 pub mod serve;
 pub mod session;
 pub mod wiki;
