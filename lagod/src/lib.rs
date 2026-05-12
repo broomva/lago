@@ -1,5 +1,6 @@
 pub mod config;
 pub mod shutdown;
+pub mod substrate;
 
 use config::DaemonConfig;
 use std::sync::Arc;
@@ -54,10 +55,22 @@ pub async fn run(config: DaemonConfig) -> Result<(), Box<dyn std::error::Error>>
     let grpc_service =
         lago_ingest::proto::ingest_service_server::IngestServiceServer::new(ingest_server);
 
+    // BRO-1017: Substrate-plane service. Topology B's lifed (via
+    // lago-proxy) dials this for `Append` + `ListNamespaces`.
+    // Mounted alongside IngestService on the same gRPC port so a
+    // single client connection can multiplex both services.
+    let substrate_service =
+        substrate::SubstrateService::new(journal.clone() as Arc<dyn lago_core::Journal>);
+    let substrate_grpc =
+        lago_substrate_proto::lago::v1::lago_substrate_server::LagoSubstrateServer::new(
+            substrate_service,
+        );
+
     info!(%grpc_addr, "starting gRPC server");
     let grpc_handle = tokio::spawn(async move {
         tonic::transport::Server::builder()
             .add_service(grpc_service)
+            .add_service(substrate_grpc)
             .serve(grpc_addr)
             .await
             .map_err(|e| format!("gRPC server error: {e}"))
