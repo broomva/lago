@@ -12,7 +12,7 @@ rust-version.workspace = true
 
 [dependencies]
 lago-core.workspace = true
-lance = "0.24"
+lance = "0.28"
 arrow = { version = "54", features = ["json"] }
 arrow-schema = "54"
 arrow-array = "54"
