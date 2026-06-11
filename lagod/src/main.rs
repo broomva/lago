@@ -28,6 +28,15 @@ struct Args {
     /// Data directory (overrides config file)
     #[arg(long)]
     data_dir: Option<PathBuf>,
+
+    /// Bind lagod's substrate-plane gRPC server (`lago.v1.LagoSubstrate`)
+    /// on this Unix-domain socket alongside the TCP gRPC + HTTP servers.
+    /// When unset, only the TCP/HTTP planes run (standalone behavior).
+    /// Topology-B operators set this so lifed's `lago-proxy` can dial in
+    /// over `/run/life/lago.sock`. Stage 6 — sibling of arcand's
+    /// `--uds-socket` (BRO-1016).
+    #[arg(long, env = "LAGO_UDS_SOCKET", value_name = "PATH")]
+    uds_socket: Option<PathBuf>,
 }
 
 // --- Entry point
@@ -51,6 +60,6 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = DaemonConfig::load(&args.config)?;
     config.merge_cli(args.grpc_port, args.http_port, args.data_dir);
 
-    // --- Run the daemon
-    lagod::run(config).await
+    // --- Run the daemon (optionally binding the substrate-plane UDS)
+    lagod::run(config, args.uds_socket).await
 }

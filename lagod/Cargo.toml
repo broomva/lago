@@ -29,6 +29,12 @@ clap.workspace = true
 prost-types.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+# `tokio-stream` (workspace features include `net`) provides
+# `UnixListenerStream`, used by the optional substrate-plane UDS serve
+# mode (`--uds-socket`). Previously dev-only — promoted to a runtime
+# dep when the UDS listener moved from the BRO-1017 wire test into the
+# daemon itself (Stage 6: lifed dials lagod over `/run/life/lago.sock`).
+tokio-stream.workspace = true
 tonic.workspace = true
 axum.workspace = true
 toml.workspace = true
@@ -48,5 +54,7 @@ aios-protocol.workspace = true
 lago-proxy.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-tokio-stream = { workspace = true, features = ["net"] }
+# `tokio-stream` is now a runtime dependency (see above) with the `net`
+# feature; the wire test reuses it for its in-test UDS listener.
+tokio-stream.workspace = true
 tonic = "0.14"

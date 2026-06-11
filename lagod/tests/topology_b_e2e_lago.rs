@@ -326,3 +326,144 @@ async fn proxy_to_server_round_trip() {
 
     env.shutdown().await;
 }
+
+/// Stage 6: drive lagod's OWN `serve_substrate_uds` helper (not a
+/// hand-rolled copy like `SubstrateUnderTest` above) over a tempdir
+/// UDS, dial it with `LagoProxy`, and prove the full bind → serve →
+/// inject-shutdown → socket-cleanup path lifed reaches in production.
+///
+/// The helper is `#[doc(hidden)] pub` solely for this test; the daemon
+/// passes `shutdown::shutdown_signal()` at its single call site, this
+/// test passes a `oneshot` it controls so the drain is deterministic
+/// (no process-global SIGTERM/SIGINT in the harness).
+#[tokio::test]
+async fn serve_substrate_uds_binds_dials_and_cleans_up() {
+    let tempdir = TempDir::new().expect("tempdir");
+    // Nest the socket one dir deep to also exercise the helper's
+    // `create_dir_all(parent)` branch.
+    let socket = tempdir.path().join("run").join("lago.sock");
+    let db_path = tempdir.path().join("journal.redb");
+    let journal = Arc::new(RedbJournal::open(&db_path).expect("open journal"));
+
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let serve_journal = Arc::clone(&journal) as Arc<dyn Journal>;
+    let serve_socket = socket.clone();
+    // `serve_substrate_uds` returns `Box<dyn Error>` (not `+ Send`), so
+    // collapse it to a `String` (Send) inside the task — same shape as
+    // the daemon's call site, which maps the error to a log line.
+    let server = tokio::spawn(async move {
+        lagod::serve_substrate_uds(serve_socket, serve_journal, async move {
+            let _ = shutdown_rx.await;
+        })
+        .await
+        .map_err(|e| e.to_string())
+    });
+
+    // The helper creates the parent dir + binds the socket; wait for it.
+    for _ in 0..200 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(socket.exists(), "helper bound the UDS (parent dir created)");
+
+    // Dial lagod's real serve path and round-trip an append into the
+    // SHARED journal — the same handle lifed's lago-proxy reaches.
+    let proxy = LagoProxy::connect(socket.clone())
+        .await
+        .expect("dial lagod serve_substrate_uds over UDS");
+    let namespace = "session/stage6-uds-serve";
+    let payload = serde_json::json!({"stage": 6, "real": true});
+    proxy
+        .append_event(
+            namespace,
+            "stage6.boot",
+            serde_json::to_vec(&payload).unwrap(),
+        )
+        .await
+        .expect("append_event through lagod serve path");
+
+    let events = journal
+        .read(
+            EventQuery::new()
+                .session(SessionId::from_string(namespace))
+                .branch(BranchId::from_string("main")),
+        )
+        .await
+        .expect("read journal");
+    assert_eq!(events.len(), 1, "append journaled via lagod's serve path");
+    match &events[0].payload {
+        EventKind::Custom { event_type, data } => {
+            assert_eq!(event_type, "stage6.boot");
+            assert_eq!(data, &payload);
+        }
+        other => panic!("expected EventKind::Custom, got: {other:?}"),
+    }
+
+    // Trigger the injected shutdown and assert the helper drains AND
+    // best-effort-removes the socket file (the production cleanup).
+    let _ = shutdown_tx.send(());
+    let served = tokio::time::timeout(Duration::from_secs(5), server)
+        .await
+        .expect("serve task drained within 5s")
+        .expect("serve task joined");
+    served.expect("serve_substrate_uds returned Ok after shutdown");
+    assert!(
+        !socket.exists(),
+        "socket file cleaned up on graceful shutdown"
+    );
+}
+
+#[tokio::test]
+async fn serve_substrate_uds_rebinds_over_stale_socket() {
+    // A crashed predecessor (SIGKILL, OOM) leaves the socket FILE
+    // behind with no listener — the exact state a container restart
+    // inherits. `bind_substrate_uds` must unlink it and bind fresh
+    // instead of failing AddrInUse and (via the eager-bind contract)
+    // taking the daemon down.
+    let tempdir = TempDir::new().expect("tempdir");
+    let socket = tempdir.path().join("lagod.sock");
+    let db_path = tempdir.path().join("journal.redb");
+    let journal = Arc::new(RedbJournal::open(&db_path).expect("open journal"));
+
+    // Fabricate the stale state: bind a real UDS at the path, then
+    // drop the listener WITHOUT removing the file (a kill leaves
+    // exactly this — `exists()` true, `connect()` refused).
+    {
+        let stale = tokio::net::UnixListener::bind(&socket).expect("bind stale socket");
+        drop(stale);
+    }
+    assert!(socket.exists(), "stale socket file is present pre-rebind");
+
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let serve_journal = Arc::clone(&journal) as Arc<dyn Journal>;
+    // `Box<dyn Error>` is not Send — collapse to String inside the
+    // task, same shape as the bind→dial→cleanup test above.
+    let serve_socket = socket.clone();
+    let server = tokio::spawn(async move {
+        lagod::serve_substrate_uds(serve_socket, serve_journal, async move {
+            let _ = shutdown_rx.await;
+        })
+        .await
+        .map_err(|e| e.to_string())
+    });
+
+    // The rebind must yield a CONNECTABLE listener (not merely a file).
+    let mut connected = false;
+    for _ in 0..100 {
+        if tokio::net::UnixStream::connect(&socket).await.is_ok() {
+            connected = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(connected, "rebound socket accepts connections");
+
+    let _ = shutdown_tx.send(());
+    let served = tokio::time::timeout(Duration::from_secs(5), server)
+        .await
+        .expect("serve task drained within 5s")
+        .expect("serve task joined");
+    served.expect("serve_substrate_uds returned Ok after shutdown");
+}

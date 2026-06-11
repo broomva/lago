@@ -31,5 +31,8 @@ pub async fn run(opts: ServeOptions) -> Result<(), Box<dyn std::error::Error>> {
         Some(opts.data_dir),
     );
 
-    lagod::run(config).await
+    // `lago serve` is the standalone dev/TCP path — no substrate-plane
+    // UDS. The Topology-B UDS surface is driven by the `lagod` binary's
+    // `--uds-socket` flag (Stage 6).
+    lagod::run(config, None).await
 }
