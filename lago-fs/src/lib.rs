@@ -10,7 +10,9 @@ pub use branch::{BranchInfo, BranchManager};
 pub use diff::{DiffEntry, diff};
 pub use manifest::Manifest;
 pub use projection::ManifestProjection;
-pub use snapshot::snapshot;
+pub use snapshot::{
+    DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FILES, SnapshotLimits, snapshot, snapshot_bounded,
+};
 pub use sync::LakeFsSync;
 pub use tracker::FsTracker;
 pub use tree::{TreeEntry, list_directory, parent_dirs, walk};
