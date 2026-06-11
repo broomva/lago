@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use lago_core::LagoResult;
 use lago_core::event::EventPayload;
-use lago_store::BlobStore;
+use lago_store::BlobBackend;
 
 use crate::diff::{self, DiffEntry};
 use crate::manifest::Manifest;
@@ -19,14 +19,19 @@ use crate::snapshot;
 /// Inline filesystem tracker producing event payloads on writes/deletes.
 ///
 /// Thread-safe: the internal manifest is behind a `Mutex`.
+///
+/// Blob content is stored through a [`BlobBackend`] — `LocalBlobBackend` for
+/// on-disk storage, or a remote backend (e.g. `arcan_lago::RemoteBlobBackend`)
+/// when running against a remote Lago daemon — so file content stays durable
+/// wherever the journal lives.
 pub struct FsTracker {
     manifest: Mutex<Manifest>,
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobBackend>,
 }
 
 impl FsTracker {
     /// Create a new tracker seeded with an existing manifest state.
-    pub fn new(manifest: Manifest, blob_store: Arc<BlobStore>) -> Self {
+    pub fn new(manifest: Manifest, blob_store: Arc<dyn BlobBackend>) -> Self {
         Self {
             manifest: Mutex::new(manifest),
             blob_store,
@@ -79,7 +84,7 @@ impl FsTracker {
     /// changes made outside of tracked writes.
     pub fn reconcile(&self, workspace_root: &Path) -> LagoResult<Vec<EventPayload>> {
         let mut manifest = self.manifest.lock().unwrap();
-        let new_manifest = snapshot::snapshot(workspace_root, &manifest, &self.blob_store)?;
+        let new_manifest = snapshot::snapshot(workspace_root, &manifest, self.blob_store.as_ref())?;
         let diffs = diff::diff(&manifest, &new_manifest);
 
         // Replace manifest with the fresh snapshot.
@@ -121,11 +126,14 @@ fn now_micros() -> u64 {
 mod tests {
     use super::*;
     use lago_core::BlobHash;
+    use lago_store::{BlobStore, LocalBlobBackend};
     use std::fs;
 
-    fn setup() -> (tempfile::TempDir, Arc<BlobStore>, FsTracker) {
+    fn setup() -> (tempfile::TempDir, Arc<LocalBlobBackend>, FsTracker) {
         let tmp = tempfile::tempdir().unwrap();
-        let blob_store = Arc::new(BlobStore::open(tmp.path().join("blobs")).unwrap());
+        let blob_store = Arc::new(LocalBlobBackend::new(Arc::new(
+            BlobStore::open(tmp.path().join("blobs")).unwrap(),
+        )));
         let tracker = FsTracker::new(Manifest::new(), blob_store.clone());
         (tmp, blob_store, tracker)
     }
@@ -233,7 +241,8 @@ mod tests {
         // Write a file, snapshot it, then change it.
         // Use different-length content so the snapshot's size-based fast path doesn't skip the hash.
         fs::write(ws.join("mod.txt"), "original").unwrap();
-        let initial = crate::snapshot::snapshot(&ws, &Manifest::new(), &blob_store).unwrap();
+        let initial =
+            crate::snapshot::snapshot(&ws, &Manifest::new(), blob_store.as_ref()).unwrap();
 
         fs::write(
             ws.join("mod.txt"),

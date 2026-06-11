@@ -57,6 +57,15 @@ fn parse_range(header: &str, total: u64) -> Option<ByteRange> {
         return None;
     }
 
+    // An empty resource has no satisfiable byte range. Bail before any of the
+    // `total - 1` expressions below underflow on u64 (debug: panic in the
+    // serve task; release: wraps to u64::MAX). This is reached by a routine
+    // `Range: bytes=0-0` existence probe against a stored zero-byte blob — the
+    // server then returns 416, which the caller reads as "present but empty".
+    if total == 0 {
+        return None;
+    }
+
     let (start_str, end_str) = spec.split_once('-')?;
 
     if start_str.is_empty() {
@@ -264,4 +273,32 @@ pub async fn put_blob(
             size_bytes: body.len() as u64,
         }),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_range;
+
+    #[test]
+    fn empty_resource_has_no_satisfiable_range() {
+        // total == 0 must short-circuit before any `total - 1` u64 underflow
+        // (the existence-probe path: `Range: bytes=0-0` against a zero-byte
+        // blob). Both forms that would underflow are covered.
+        assert!(parse_range("bytes=0-0", 0).is_none());
+        assert!(parse_range("bytes=0-", 0).is_none());
+        assert!(parse_range("bytes=-5", 0).is_none());
+    }
+
+    #[test]
+    fn normal_ranges_still_parse() {
+        let r = parse_range("bytes=0-0", 10).expect("valid single-byte range");
+        assert_eq!((r.start, r.end), (0, 0));
+        let r = parse_range("bytes=2-5", 10).expect("valid range");
+        assert_eq!((r.start, r.end), (2, 5));
+        // Clamps end to the last byte.
+        let r = parse_range("bytes=8-99", 10).expect("clamped range");
+        assert_eq!((r.start, r.end), (8, 9));
+        // Out-of-bounds start is unsatisfiable.
+        assert!(parse_range("bytes=10-10", 10).is_none());
+    }
 }

@@ -4,17 +4,21 @@ use walkdir::WalkDir;
 
 use crate::manifest::Manifest;
 use lago_core::LagoResult;
-use lago_store::BlobStore;
+use lago_store::BlobBackend;
 
 /// Builds a new manifest by scanning a physical directory.
 ///
 /// Uses the `previous_manifest` to optimize hashing. If a file's size and
 /// last modified time (mtime) match the previous entry, its hash is reused
 /// instead of recalculating and re-storing the blob.
+///
+/// New/modified file content is persisted through the [`BlobBackend`], so the
+/// O(n) reconciliation safety-net honours whichever backend (local or remote)
+/// the tracker was built with.
 pub fn snapshot(
     root: &Path,
     previous_manifest: &Manifest,
-    blob_store: &BlobStore,
+    blob_store: &dyn BlobBackend,
 ) -> LagoResult<Manifest> {
     let mut new_manifest = Manifest::new();
 
@@ -95,12 +99,18 @@ pub fn snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lago_store::{BlobStore, LocalBlobBackend};
     use std::io::Write;
+    use std::sync::Arc;
+
+    fn local_backend(root: &Path) -> LocalBlobBackend {
+        LocalBlobBackend::new(Arc::new(BlobStore::open(root).unwrap()))
+    }
 
     #[test]
     fn snapshot_creates_new_manifest() {
         let temp = tempfile::tempdir().unwrap();
-        let blob_store = BlobStore::open(temp.path().join("blobs")).unwrap();
+        let blob_store = local_backend(&temp.path().join("blobs"));
         let workspace = temp.path().join("ws");
         fs::create_dir_all(&workspace).unwrap();
 
@@ -122,7 +132,7 @@ mod tests {
     #[test]
     fn snapshot_reuses_unchanged_files() {
         let temp = tempfile::tempdir().unwrap();
-        let blob_store = BlobStore::open(temp.path().join("blobs")).unwrap();
+        let blob_store = local_backend(&temp.path().join("blobs"));
         let workspace = temp.path().join("ws");
         fs::create_dir_all(&workspace).unwrap();
 
