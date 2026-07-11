@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use life_stream_metrics::{MeasuredReceiver, MeasuredSender, measured_channel};
 use redb::{Database, ReadableTable};
-use tokio::sync::broadcast;
 use tracing::{Instrument, debug, info_span};
 
 use lago_core::{
@@ -29,10 +29,19 @@ pub struct EventNotification {
 ///
 /// All redb operations are run on a blocking thread pool via
 /// `tokio::task::spawn_blocking` because redb is synchronous.
+/// Broadcast channel name for the journal's event-notification stream —
+/// the canonical Life stream (every kernel event flows through here). Used
+/// as the `channel` label on all `stream.broadcast.*` metrics.
+pub const JOURNAL_STREAM_CHANNEL: &str = "lago.journal.stream";
+
+/// Capacity of the notification broadcast channel. Surfaced as a constant so
+/// the `buffer_saturation` metric (len / capacity) has a stable denominator.
+pub const JOURNAL_STREAM_CAPACITY: usize = 4096;
+
 #[derive(Clone)]
 pub struct RedbJournal {
     db: Arc<Database>,
-    notify_tx: broadcast::Sender<EventNotification>,
+    notify_tx: MeasuredSender<EventNotification>,
 }
 
 impl RedbJournal {
@@ -64,15 +73,20 @@ impl RedbJournal {
                 .map_err(|e| LagoError::Journal(format!("failed to commit table init: {e}")))?;
         }
 
-        let (notify_tx, _) = broadcast::channel(4096);
+        let (notify_tx, _) =
+            measured_channel::<EventNotification>(JOURNAL_STREAM_CAPACITY, JOURNAL_STREAM_CHANNEL);
         Ok(Self {
             db: Arc::new(db),
             notify_tx,
         })
     }
 
-    /// Get a broadcast receiver for event notifications.
-    pub fn subscribe(&self) -> broadcast::Receiver<EventNotification> {
+    /// Get a measured broadcast receiver for event notifications.
+    ///
+    /// The receiver is instrumented: drains, lag events, and skipped-message
+    /// counts surface as `stream.broadcast.*` metrics under the
+    /// [`JOURNAL_STREAM_CHANNEL`] label.
+    pub fn subscribe(&self) -> MeasuredReceiver<EventNotification> {
         self.notify_tx.subscribe()
     }
 

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use futures::Stream;
+use life_stream_metrics::MeasuredReceiver;
 use redb::Database;
 use tokio::sync::broadcast;
 
@@ -21,7 +22,7 @@ use crate::tables::EVENTS;
 /// provides near-real-time event delivery.
 pub struct EventTailStream {
     db: Arc<Database>,
-    rx: broadcast::Receiver<EventNotification>,
+    rx: MeasuredReceiver<EventNotification>,
     session_id: SessionId,
     branch_id: BranchId,
     /// The last sequence number we have yielded. We only yield events with seq > last_seq.
@@ -35,7 +36,7 @@ pub struct EventTailStream {
 impl EventTailStream {
     pub fn new(
         db: Arc<Database>,
-        rx: broadcast::Receiver<EventNotification>,
+        rx: MeasuredReceiver<EventNotification>,
         session_id: SessionId,
         branch_id: BranchId,
         after_seq: SeqNo,
