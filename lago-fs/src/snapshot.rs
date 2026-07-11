@@ -14,6 +14,21 @@ pub const DEFAULT_MAX_FILES: usize = 10_000;
 /// blob-store. Matches the 16 MiB cap used elsewhere in the tracking path.
 pub const DEFAULT_MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
+/// mtime-recency window (seconds) below which the snapshot fast path is
+/// distrusted and the file is re-hashed even when its `(size, mtime)` match the
+/// previous manifest entry.
+///
+/// The manifest records mtime truncated to whole seconds, so two writes inside
+/// the same wall-clock second are indistinguishable by `(size, mtime)` alone.
+/// An in-place edit that preserves byte length and lands in the SAME second as
+/// a previously-recorded write would therefore slip through the fast path
+/// carrying stale content (BRO-1481). Re-hashing anything modified within this
+/// many seconds of "now" closes that race: a genuine same-second edit is
+/// caught, while unchanged content simply re-hashes to the identical blob (no
+/// spurious change — only a bounded extra read for very recently-touched files,
+/// which are exactly the handful a just-run shell command produced).
+pub const RACY_MTIME_WINDOW_SECS: u64 = 2;
+
 /// Bounds for a workspace snapshot walk.
 ///
 /// The exec-path reconciliation walks the entire workspace after a shell
@@ -47,6 +62,17 @@ impl SnapshotLimits {
             max_file_bytes: u64::MAX,
         }
     }
+}
+
+/// True when `mtime` (whole seconds) is recent enough relative to `now_secs`
+/// that a same-second, same-size in-place edit cannot be ruled out by the
+/// `(size, mtime)` fast path alone. See [`RACY_MTIME_WINDOW_SECS`].
+///
+/// `saturating_sub` makes an mtime *ahead* of `now_secs` (clock skew, or the
+/// `SystemTime::now()` fallback used when a file's mtime is unreadable) count
+/// as racy — the conservative direction.
+fn mtime_within_race_window(mtime: u64, now_secs: u64) -> bool {
+    now_secs.saturating_sub(mtime) <= RACY_MTIME_WINDOW_SECS
 }
 
 /// Builds a new manifest by scanning a physical directory.
@@ -117,6 +143,15 @@ pub fn snapshot_bounded(
 
     let mut scanned: usize = 0;
 
+    // Wall-clock "now" (whole seconds), captured once for the whole walk. Used
+    // to distrust the `(size, mtime)` fast path for very recently-modified
+    // files, closing the same-size/same-second in-place edit race (BRO-1481;
+    // see `RACY_MTIME_WINDOW_SECS`).
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
     for entry in walker.filter_map(Result::ok) {
         let path = entry.path();
 
@@ -169,13 +204,21 @@ pub fn snapshot_bounded(
             continue;
         }
 
-        // Check if we can reuse the previous hash (fast path)
+        // Check if we can reuse the previous hash (fast path).
+        //
+        // Reuse only when the file was ALSO not modified within the last
+        // `RACY_MTIME_WINDOW_SECS`: mtime has one-second resolution, so a
+        // same-size in-place edit inside the same wall-clock second as the
+        // recorded write is invisible to `(size, mtime)` (BRO-1481). Recent
+        // files fall through to the slow path and are re-hashed; unchanged
+        // content simply re-hashes to the same blob (no spurious event).
         let mut reused = false;
         if let Some(prev_entry) = previous_manifest.get(&virtual_path)
             && prev_entry.size_bytes == size
             && prev_entry.updated_at == mtime
+            && !mtime_within_race_window(mtime, now_secs)
         {
-            // Match: assume content is identical to skip IO + hashing
+            // Match + not racy: assume content is identical to skip IO + hashing
             new_manifest.apply_write(
                 virtual_path.clone(),
                 prev_entry.blob_hash.clone(),
@@ -208,12 +251,25 @@ pub fn snapshot_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diff::{self, DiffEntry};
     use lago_store::{BlobStore, LocalBlobBackend};
     use std::io::Write;
     use std::sync::Arc;
+    use std::time::SystemTime;
 
     fn local_backend(root: &Path) -> LocalBlobBackend {
         LocalBlobBackend::new(Arc::new(BlobStore::open(root).unwrap()))
+    }
+
+    /// Force a file's mtime to `t`, without touching its content.
+    ///
+    /// Opening with `write(true)` (NOT `truncate`) keeps the bytes intact; the
+    /// tests use this to pin two writes to the SAME wall-clock second
+    /// deterministically, instead of racing the clock.
+    fn set_mtime(path: &Path, t: SystemTime) {
+        let f = fs::File::options().write(true).open(path).unwrap();
+        f.set_modified(t).unwrap();
+        f.sync_all().unwrap();
     }
 
     #[test]
@@ -400,5 +456,91 @@ mod tests {
             bounded.get("/a.txt").unwrap().blob_hash,
             legacy.get("/a.txt").unwrap().blob_hash
         );
+    }
+
+    #[test]
+    fn snapshot_detects_same_size_same_second_inplace_edit() {
+        // BRO-1481: an in-place edit that preserves byte length AND lands in the
+        // same wall-clock second as the previously-recorded write must NOT be
+        // hidden by the `(size, mtime)` fast path. Both writes are pinned to the
+        // same recent mtime so the race is exercised deterministically.
+        let temp = tempfile::tempdir().unwrap();
+        let blob_store = local_backend(&temp.path().join("blobs"));
+        let workspace = temp.path().join("ws");
+        fs::create_dir_all(&workspace).unwrap();
+        let file_path = workspace.join("token.txt");
+
+        // A recent instant — inside the race window relative to "now".
+        let t0 = SystemTime::now();
+
+        fs::write(&file_path, "foo").unwrap(); // len 3
+        set_mtime(&file_path, t0);
+        let prev = snapshot(&workspace, &Manifest::new(), &blob_store).unwrap();
+        let prev_hash = prev.get("/token.txt").unwrap().blob_hash.clone();
+
+        // Same-length in-place edit, re-pinned to the SAME second as the prior
+        // write. Without the fix the fast path reuses the stale hash.
+        fs::write(&file_path, "bar").unwrap(); // len 3, different content
+        set_mtime(&file_path, t0);
+
+        let next = snapshot(&workspace, &prev, &blob_store).unwrap();
+        let next_hash = next.get("/token.txt").unwrap().blob_hash.clone();
+
+        assert_ne!(
+            prev_hash, next_hash,
+            "same-size/same-second in-place edit must change the tracked hash"
+        );
+
+        let d = diff::diff(&prev, &next);
+        assert!(
+            d.iter()
+                .any(|e| matches!(e, DiffEntry::Modified { path, .. } if path == "/token.txt")),
+            "expected a Modified diff for /token.txt, got {d:?}"
+        );
+    }
+
+    #[test]
+    fn snapshot_no_ops_on_unchanged_recent_file() {
+        // The guard re-hashes recently-modified files — it must NOT over-report:
+        // an unchanged file (even one just written, inside the race window)
+        // re-hashes to the same blob and produces NO diff. A wrong fix that
+        // always emits Modified would fail here.
+        let temp = tempfile::tempdir().unwrap();
+        let blob_store = local_backend(&temp.path().join("blobs"));
+        let workspace = temp.path().join("ws");
+        fs::create_dir_all(&workspace).unwrap();
+        let file_path = workspace.join("stable.txt");
+
+        let t0 = SystemTime::now();
+        fs::write(&file_path, "unchanged").unwrap();
+        set_mtime(&file_path, t0);
+
+        let prev = snapshot(&workspace, &Manifest::new(), &blob_store).unwrap();
+        // No edit — content and (recent) mtime are identical.
+        let next = snapshot(&workspace, &prev, &blob_store).unwrap();
+
+        let d = diff::diff(&prev, &next);
+        assert!(
+            d.is_empty(),
+            "unchanged recent file must not produce a diff, got {d:?}"
+        );
+        assert_eq!(
+            prev.get("/stable.txt").unwrap().blob_hash,
+            next.get("/stable.txt").unwrap().blob_hash
+        );
+    }
+
+    #[test]
+    fn mtime_within_race_window_boundaries() {
+        // Recent (delta 0..=window) is racy; older is trusted; future mtime
+        // (skew/fallback) is conservatively racy.
+        let now = 1_000_000;
+        assert!(mtime_within_race_window(now, now)); // same second
+        assert!(mtime_within_race_window(now - RACY_MTIME_WINDOW_SECS, now)); // edge of window
+        assert!(!mtime_within_race_window(
+            now - RACY_MTIME_WINDOW_SECS - 1,
+            now
+        )); // just outside → trusted
+        assert!(mtime_within_race_window(now + 5, now)); // future mtime → racy
     }
 }

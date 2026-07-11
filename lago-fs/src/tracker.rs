@@ -141,10 +141,14 @@ impl FsTracker {
     /// Reconciliation is best-effort observability. A few edge cases are
     /// knowingly deferred (ticketed separately):
     ///
-    /// - **Same-size + same-second content edits are missed.** The snapshot
-    ///   fast path (`snapshot.rs`) reuses a file's prior hash when its size and
-    ///   mtime-in-seconds both match. A modification that preserves byte length
-    ///   and lands within the same wall-clock second is treated as unchanged.
+    /// - **Same-size + same-second content edits** — CLOSED (BRO-1481). The
+    ///   snapshot fast path (`snapshot.rs`) reuses a file's prior hash when its
+    ///   size and mtime-in-seconds both match; because mtime has one-second
+    ///   resolution, a same-length in-place edit landing in the same wall-clock
+    ///   second as the recorded write once slipped through as "unchanged".
+    ///   `snapshot_bounded` now re-hashes any file modified within
+    ///   [`RACY_MTIME_WINDOW_SECS`](crate::snapshot::RACY_MTIME_WINDOW_SECS) of
+    ///   "now", so a promptly-reconciled same-second edit is detected.
     /// - **Channel back-pressure on bursts.** Emitted payloads go through a
     ///   bounded mpsc; a single reconcile of a huge tree could in principle fill
     ///   it. In practice — with the workspace baselined at boot (see
@@ -496,6 +500,57 @@ mod tests {
                 .any(|p| matches!(p, EventPayload::FileDelete { path } if path == "/sub")),
             "the /sub directory sentinel must not produce a FileDelete"
         );
+    }
+
+    #[test]
+    fn reconcile_detects_same_size_same_second_inplace_edit() {
+        // BRO-1481 exec-path reproduction: a same-length in-place edit within the
+        // same wall-clock second as the baselined write must still surface a
+        // FileWrite payload on reconcile — and an unchanged re-reconcile must
+        // stay silent (no over-emission). Both writes are pinned to one recent
+        // second so the race is deterministic.
+        let tmp = tempfile::tempdir().unwrap();
+        let blob_store: Arc<dyn lago_store::BlobBackend> = Arc::new(LocalBlobBackend::new(
+            Arc::new(BlobStore::open(tmp.path().join("blobs")).unwrap()),
+        ));
+        let ws = tmp.path().join("ws");
+        fs::create_dir_all(&ws).unwrap();
+        let file = ws.join("cfg.env");
+
+        let t0 = std::time::SystemTime::now();
+        fs::write(&file, "KEY=foo").unwrap(); // len 7
+        set_test_mtime(&file, t0);
+
+        // Baseline records the file at the recorded (recent) second.
+        let tracker = FsTracker::with_baseline(&ws, blob_store, SnapshotLimits::default()).unwrap();
+
+        // Same-length in-place edit, re-pinned to the SAME second.
+        fs::write(&file, "KEY=bar").unwrap(); // len 7, changed content
+        set_test_mtime(&file, t0);
+
+        let payloads = tracker.reconcile(&ws).unwrap();
+        assert!(
+            payloads.iter().any(|p| matches!(
+                p,
+                EventPayload::FileWrite { path, .. } if path == "/cfg.env"
+            )),
+            "same-size/same-second in-place edit must emit a FileWrite, got {payloads:?}"
+        );
+
+        // Healthy no-op: nothing changed on disk since the swap → zero events,
+        // even though the file's mtime is still recent (would be re-hashed).
+        let quiet = tracker.reconcile(&ws).unwrap();
+        assert!(
+            quiet.is_empty(),
+            "unchanged reconcile must emit nothing, got {quiet:?}"
+        );
+    }
+
+    /// Pin a file's mtime to `t` without altering its content.
+    fn set_test_mtime(path: &std::path::Path, t: std::time::SystemTime) {
+        let f = fs::File::options().write(true).open(path).unwrap();
+        f.set_modified(t).unwrap();
+        f.sync_all().unwrap();
     }
 
     #[test]
