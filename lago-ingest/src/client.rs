@@ -76,6 +76,9 @@ pub struct IngestSender {
 
 impl IngestSender {
     /// Send an event to the ingest stream.
+    // `SendError<T>` hands the unsent request back to the caller; boxing it
+    // would change this public signature for every consumer.
+    #[allow(clippy::result_large_err)]
     pub async fn send_event(
         &self,
         event: &EventEnvelope,
@@ -88,6 +91,9 @@ impl IngestSender {
     }
 
     /// Send a heartbeat.
+    // `SendError<T>` hands the unsent request back to the caller; boxing it
+    // would change this public signature for every consumer.
+    #[allow(clippy::result_large_err)]
     pub async fn send_heartbeat(&self) -> Result<(), mpsc::error::SendError<proto::IngestRequest>> {
         let hb = codec::make_heartbeat();
         let req = proto::IngestRequest {
