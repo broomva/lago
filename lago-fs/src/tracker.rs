@@ -214,36 +214,96 @@ impl FsTracker {
             diffs
         };
 
-        let payloads = diffs
-            .into_iter()
-            // Drop directory-sentinel diffs: a sentinel is never a real file,
-            // so it must not become a FileWrite/FileDelete payload.
-            .filter(|d| match d {
-                DiffEntry::Added { entry, .. }
-                | DiffEntry::Removed { entry, .. }
-                | DiffEntry::Modified { new: entry, .. } => !is_directory_sentinel(entry),
-            })
-            .map(|d| match d {
-                DiffEntry::Added { path, entry }
-                | DiffEntry::Modified {
-                    path, new: entry, ..
-                } => EventPayload::FileWrite {
-                    path,
-                    blob_hash: entry.blob_hash.into(),
-                    size_bytes: entry.size_bytes,
-                    content_type: entry.content_type,
-                },
-                DiffEntry::Removed { path, .. } => EventPayload::FileDelete { path },
-            })
-            .collect();
+        Ok(diffs_to_payloads(diffs))
+    }
 
-        Ok(payloads)
+    /// Per-session bounded reconciliation (BRO-1491).
+    ///
+    /// Like [`reconcile_bounded`](Self::reconcile_bounded), but for a workspace
+    /// that is one session's isolated subtree of a *shared* manifest. The walk
+    /// covers only `walk_root` (the session workspace — never the whole data
+    /// dir, so the redb journal / blob store stay out of the diff), and every
+    /// resulting key is prefixed with `key_prefix` (e.g. `/sessions/<id>`) so
+    /// the emitted events and manifest entries are session-unique and never
+    /// collide with another session's or the boot baseline's.
+    ///
+    /// The diff and swap are scoped to the `key_prefix` subtree: entries
+    /// outside it (other sessions, baseline) are left untouched, so a partial
+    /// per-session walk cannot manufacture phantom deletes for paths it never
+    /// looked at.
+    ///
+    /// `key_prefix` must be an absolute manifest prefix WITHOUT a trailing
+    /// slash (e.g. `/sessions/abc`); an empty prefix degrades to whole-manifest
+    /// behavior identical to [`reconcile_bounded`](Self::reconcile_bounded).
+    pub fn reconcile_bounded_scoped(
+        &self,
+        walk_root: &Path,
+        key_prefix: &str,
+        limits: SnapshotLimits,
+    ) -> LagoResult<Vec<EventPayload>> {
+        // Snapshot the session workspace (keys relative to walk_root → `/rel`).
+        // No hash-reuse hint: correctness does not depend on it, and building a
+        // stripped previous view would only save re-hashing on unchanged files.
+        let raw = snapshot::snapshot_bounded(
+            walk_root,
+            &Manifest::new(),
+            self.blob_store.as_ref(),
+            limits,
+        )?;
+
+        // Re-key the snapshot under the session prefix (`/rel` → `{prefix}/rel`).
+        let mut prefixed = std::collections::BTreeMap::new();
+        for (key, entry) in raw.entries() {
+            let new_key = format!("{key_prefix}{key}");
+            let mut e = entry.clone();
+            e.path = new_key.clone();
+            prefixed.insert(new_key, e);
+        }
+        let new_scoped = Manifest::from_entries(prefixed);
+
+        // Diff the session subtree only, then swap it in place. Everything
+        // outside `key_prefix` is preserved verbatim.
+        let diffs = {
+            let mut manifest = self.manifest.lock().unwrap();
+            let old_scoped = Manifest::from_entries(manifest.subtree(key_prefix));
+            let diffs = diff::diff(&old_scoped, &new_scoped);
+            manifest.replace_subtree(key_prefix, new_scoped);
+            diffs
+        };
+
+        Ok(diffs_to_payloads(diffs))
     }
 
     /// Clone the current manifest snapshot.
     pub fn manifest(&self) -> Manifest {
         self.manifest.lock().unwrap().clone()
     }
+}
+
+/// Map manifest diffs to file events, dropping directory-sentinel diffs (a
+/// sentinel is never a real file, so it must not become a `FileWrite`/
+/// `FileDelete`). Shared by the whole-manifest and per-session reconcile paths.
+fn diffs_to_payloads(diffs: Vec<DiffEntry>) -> Vec<EventPayload> {
+    diffs
+        .into_iter()
+        .filter(|d| match d {
+            DiffEntry::Added { entry, .. }
+            | DiffEntry::Removed { entry, .. }
+            | DiffEntry::Modified { new: entry, .. } => !is_directory_sentinel(entry),
+        })
+        .map(|d| match d {
+            DiffEntry::Added { path, entry }
+            | DiffEntry::Modified {
+                path, new: entry, ..
+            } => EventPayload::FileWrite {
+                path,
+                blob_hash: entry.blob_hash.into(),
+                size_bytes: entry.size_bytes,
+                content_type: entry.content_type,
+            },
+            DiffEntry::Removed { path, .. } => EventPayload::FileDelete { path },
+        })
+        .collect()
 }
 
 fn now_micros() -> u64 {
@@ -500,6 +560,100 @@ mod tests {
                 .any(|p| matches!(p, EventPayload::FileDelete { path } if path == "/sub")),
             "the /sub directory sentinel must not produce a FileDelete"
         );
+    }
+
+    // ── Per-session scoped reconcile (BRO-1491) ─────────────────────────
+
+    #[test]
+    fn reconcile_scoped_keys_are_session_unique_and_isolated() {
+        let (tmp, _blob, tracker) = setup();
+
+        // Shared manifest already holds a boot-baseline file and another
+        // session's tracked write — neither must be disturbed.
+        tracker
+            .track_write("/Cargo.toml", b"[package]", None)
+            .unwrap();
+        tracker
+            .track_write("/sessions/b/artifacts/receipt.txt", b"from B", None)
+            .unwrap();
+
+        // Session A's isolated workspace on disk.
+        let sess_a = tmp.path().join("sessions/a");
+        fs::create_dir_all(sess_a.join("artifacts")).unwrap();
+        fs::write(sess_a.join("artifacts/receipt.txt"), b"from A").unwrap();
+
+        let payloads = tracker
+            .reconcile_bounded_scoped(&sess_a, "/sessions/a", SnapshotLimits::default())
+            .unwrap();
+
+        // Emitted with the session-unique key.
+        assert!(payloads.iter().any(|p| matches!(
+            p,
+            EventPayload::FileWrite { path, .. } if path == "/sessions/a/artifacts/receipt.txt"
+        )));
+
+        let manifest = tracker.manifest();
+        assert!(manifest.exists("/sessions/a/artifacts/receipt.txt"));
+        // Baseline + session B untouched by A's scoped reconcile.
+        assert!(manifest.exists("/Cargo.toml"));
+        assert!(manifest.exists("/sessions/b/artifacts/receipt.txt"));
+    }
+
+    #[test]
+    fn reconcile_scoped_does_not_phantom_delete_other_sessions() {
+        // The crux of BRO-1491 design note 4/5: a partial per-session walk
+        // diffed against the SHARED manifest must not report other sessions'
+        // (or the baseline's) entries as deletions.
+        let (tmp, _blob, tracker) = setup();
+        tracker.track_write("/baseline.txt", b"x", None).unwrap();
+        tracker
+            .track_write("/sessions/b/keep.txt", b"y", None)
+            .unwrap();
+
+        let sess_a = tmp.path().join("sessions/a");
+        fs::create_dir_all(&sess_a).unwrap();
+        fs::write(sess_a.join("only.txt"), b"a").unwrap();
+
+        let payloads = tracker
+            .reconcile_bounded_scoped(&sess_a, "/sessions/a", SnapshotLimits::default())
+            .unwrap();
+
+        // No FileDelete for anything (baseline/session B are outside the scope).
+        assert!(
+            !payloads
+                .iter()
+                .any(|p| matches!(p, EventPayload::FileDelete { .. })),
+            "scoped reconcile must not emit deletes for out-of-scope paths: {payloads:?}"
+        );
+        assert!(tracker.manifest().exists("/baseline.txt"));
+        assert!(tracker.manifest().exists("/sessions/b/keep.txt"));
+    }
+
+    #[test]
+    fn reconcile_scoped_detects_deletions_within_session() {
+        let (tmp, _blob, tracker) = setup();
+
+        let sess_a = tmp.path().join("sessions/a");
+        fs::create_dir_all(&sess_a).unwrap();
+        fs::write(sess_a.join("doomed.txt"), b"bye").unwrap();
+
+        // First reconcile records the file under the session prefix.
+        tracker
+            .reconcile_bounded_scoped(&sess_a, "/sessions/a", SnapshotLimits::default())
+            .unwrap();
+        assert!(tracker.manifest().exists("/sessions/a/doomed.txt"));
+
+        // Delete it, reconcile again → a scoped FileDelete.
+        fs::remove_file(sess_a.join("doomed.txt")).unwrap();
+        let payloads = tracker
+            .reconcile_bounded_scoped(&sess_a, "/sessions/a", SnapshotLimits::default())
+            .unwrap();
+
+        assert!(payloads.iter().any(|p| matches!(
+            p,
+            EventPayload::FileDelete { path } if path == "/sessions/a/doomed.txt"
+        )));
+        assert!(!tracker.manifest().exists("/sessions/a/doomed.txt"));
     }
 
     #[test]

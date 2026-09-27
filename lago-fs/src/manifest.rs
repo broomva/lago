@@ -105,6 +105,40 @@ impl Manifest {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Build a manifest directly from a set of entries (no sentinel synthesis).
+    ///
+    /// Used by per-session reconciliation (BRO-1491) to construct the
+    /// prefix-scoped views it diffs and swaps. The entries are taken verbatim,
+    /// so callers are responsible for any directory sentinels they need.
+    pub fn from_entries(entries: BTreeMap<String, ManifestEntry>) -> Self {
+        Self { entries }
+    }
+
+    /// Return the entries whose path is within the `prefix` subtree — the
+    /// prefix itself or any descendant (`{prefix}/…`). A plain `starts_with`
+    /// would over-match siblings (`/sessions/a` vs `/sessions/ab`), so the
+    /// boundary is enforced on a path separator.
+    pub fn subtree(&self, prefix: &str) -> BTreeMap<String, ManifestEntry> {
+        self.entries
+            .iter()
+            .filter(|(k, _)| in_subtree(k, prefix))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
+    /// Replace the entire `prefix` subtree with `subtree`'s entries, leaving
+    /// every entry outside the subtree untouched (BRO-1491 per-session swap
+    /// against the shared manifest).
+    pub fn replace_subtree(&mut self, prefix: &str, subtree: Manifest) {
+        self.entries.retain(|k, _| !in_subtree(k, prefix));
+        self.entries.extend(subtree.entries);
+    }
+}
+
+/// True when `key` is `prefix` itself or a descendant path (`{prefix}/…`).
+fn in_subtree(key: &str, prefix: &str) -> bool {
+    key == prefix || key.starts_with(&format!("{prefix}/"))
 }
 
 #[cfg(test)]
@@ -188,5 +222,72 @@ mod tests {
         let m = Manifest::new();
         assert!(m.is_empty());
         assert_eq!(m.len(), 0);
+    }
+
+    // ── Subtree helpers (BRO-1491 per-session reconcile) ────────────────
+
+    #[test]
+    fn subtree_selects_only_descendants_not_siblings() {
+        let mut m = Manifest::new();
+        m.apply_write(
+            "/sessions/a/x.txt".into(),
+            BlobHash::from_hex("a"),
+            1,
+            None,
+            1,
+        );
+        m.apply_write(
+            "/sessions/ab/y.txt".into(),
+            BlobHash::from_hex("b"),
+            1,
+            None,
+            1,
+        );
+        m.apply_write("/other.txt".into(), BlobHash::from_hex("c"), 1, None, 1);
+
+        let sub = m.subtree("/sessions/a");
+        // /sessions/a and /sessions/a/x.txt — NOT /sessions/ab/* nor /other.txt.
+        assert!(sub.contains_key("/sessions/a"));
+        assert!(sub.contains_key("/sessions/a/x.txt"));
+        assert!(!sub.keys().any(|k| k.starts_with("/sessions/ab")));
+        assert!(!sub.contains_key("/other.txt"));
+    }
+
+    #[test]
+    fn replace_subtree_swaps_only_the_prefix() {
+        let mut m = Manifest::new();
+        m.apply_write(
+            "/sessions/a/old.txt".into(),
+            BlobHash::from_hex("a"),
+            1,
+            None,
+            1,
+        );
+        m.apply_write(
+            "/sessions/b/keep.txt".into(),
+            BlobHash::from_hex("b"),
+            1,
+            None,
+            1,
+        );
+        m.apply_write("/baseline.txt".into(), BlobHash::from_hex("c"), 1, None, 1);
+
+        let mut replacement = Manifest::new();
+        replacement.apply_write(
+            "/sessions/a/new.txt".into(),
+            BlobHash::from_hex("d"),
+            2,
+            None,
+            2,
+        );
+
+        m.replace_subtree("/sessions/a", replacement);
+
+        // A's old entry gone, A's new entry present.
+        assert!(!m.exists("/sessions/a/old.txt"));
+        assert!(m.exists("/sessions/a/new.txt"));
+        // B and baseline untouched.
+        assert!(m.exists("/sessions/b/keep.txt"));
+        assert!(m.exists("/baseline.txt"));
     }
 }
