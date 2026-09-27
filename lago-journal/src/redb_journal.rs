@@ -210,6 +210,14 @@ impl RedbJournal {
                         item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
                     let envelope: EventEnvelope = serde_json::from_str(value.value())?;
 
+                    // Keys hold only the first 26 bytes of each id, so distinct
+                    // ids sharing a prefix share a key range: keep only this
+                    // exact session and branch (BRO-1491).
+                    if envelope.session_id.as_str() != session_id.as_str()
+                        || envelope.branch_id.as_str() != branch_id.as_str()
+                    {
+                        continue;
+                    }
                     // Filter: after_seq is exclusive
                     if let Some(after_seq) = query.after_seq
                         && envelope.seq <= after_seq
@@ -255,6 +263,10 @@ impl RedbJournal {
                         item.map_err(|e| LagoError::Journal(format!("range item: {e}")))?;
                     let envelope: EventEnvelope = serde_json::from_str(value.value())?;
 
+                    // Same 26-byte key prefix, different session: not ours.
+                    if envelope.session_id.as_str() != session_id.as_str() {
+                        continue;
+                    }
                     if let Some(after_seq) = query.after_seq
                         && envelope.seq <= after_seq
                     {
@@ -847,6 +859,41 @@ mod tests {
         let fake_id = EventId::from_string("NONEXISTENT");
         let found = journal.get_event(&fake_id).await.unwrap();
         assert!(found.is_none());
+    }
+
+    /// BRO-1491: keys keep only the first 26 bytes of a session id, so two
+    /// distinct sessions sharing that prefix share a key range. Each must
+    /// still read only its own events (session+branch and session-wide).
+    #[tokio::test]
+    async fn sessions_sharing_a_26_byte_prefix_never_read_each_other() {
+        let (_dir, journal) = setup();
+        let prefix = "p".repeat(26);
+        let (a, b) = (format!("{prefix}-alice"), format!("{prefix}-bob"));
+        for (sid, text) in [(&a, "ALICE-EVENT"), (&b, "BOB-SECRET-EVENT")] {
+            let mut env = make_event(sid, "main", 0);
+            env.payload = EventPayload::Message {
+                role: "assistant".into(),
+                content: text.into(),
+                model: None,
+                token_usage: None,
+            };
+            journal.append(env).await.unwrap();
+        }
+        for query in [
+            EventQuery::new()
+                .session(SessionId::from_string(a.as_str()))
+                .branch(BranchId::from_string("main")),
+            EventQuery::new().session(SessionId::from_string(a.as_str())),
+        ] {
+            let events = journal.read(query).await.unwrap();
+            let text = serde_json::to_string(&events).unwrap();
+            assert!(text.contains("ALICE-EVENT"), "positive control: {text}");
+            assert!(
+                !text.contains("BOB-SECRET-EVENT"),
+                "prefix alias leaked: {text}"
+            );
+            assert!(events.iter().all(|e| e.session_id.as_str() == a));
+        }
     }
 
     #[tokio::test]
