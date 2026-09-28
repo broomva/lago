@@ -43,9 +43,17 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    // Initialize telemetry via Vigil (structured logging + optional OTel export)
-    let _guard = life_vigil::init_telemetry(VigConfig::for_service("lago").with_env_overrides())
-        .expect("failed to initialize telemetry");
+    // Initialize telemetry via Vigil (structured logging + optional OTel export).
+    // Telemetry is advisory: a failure must never stop lagod from serving
+    // (BRO-2642 — an https OTLP endpoint without TLS support panicked here).
+    let _guard =
+        match life_vigil::init_telemetry(VigConfig::for_service("lago").with_env_overrides()) {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                eprintln!("warning: telemetry init failed ({e}); continuing without telemetry");
+                None
+            }
+        };
 
     let args = Args::parse();
 
